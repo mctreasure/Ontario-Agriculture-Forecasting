@@ -1,0 +1,549 @@
+---
+title: "6500 Project"
+author: "Group 3"
+format: pdf
+---
+
+## Quarto
+
+Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+
+## Running Code
+
+When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
+
+```{r}
+
+library(tmap)
+library(tidyverse)
+library(dplyr)
+library(sf)
+library(sp)
+library(rvest)
+library(geodata)
+library(raster)
+library(ggplot2)
+library(tmap)
+library(spData) 
+library(spDataLarge)
+library(terra)
+library(grid)
+library(leaflet)
+library(patchwork)  # for arranging plots like tmap_arrange
+library(tidyr)
+
+```
+
+```{r}
+crs <- st_crs("EPSG:3347")
+```
+
+
+```{r}
+project_dir <- "C:/Users/mckay/OneDrive - University of Guelph/Masters/DATA 6500/Final Project"
+
+# Canada shapefile
+can <- st_read(file.path(project_dir, "forecast_project_data", "data", "lcar000b21a_e.shp")) |>
+  janitor::clean_names() |>
+  st_transform(crs = crs)
+
+# Ontario shapefile (regions)
+ontario <- st_read(file.path(project_dir, "forecast_project_data", "data", "Ministry_of_Natural_Resources_area%2C_district_and_region_administrative_boundaries_(1997-2022)_.shp")) |>
+  janitor::clean_names() |>
+  st_transform(crs = crs)
+
+# Ontario shapefile (districts)
+ontario_district <- st_read(file.path(project_dir, "forecast_project_data", "data", "MNR_District.shp")) |>
+  janitor::clean_names() |>
+  st_transform(crs = crs)
+
+# Soil complex
+# soil <- st_read(file.path(project_dir, "forecast_project_data", "data", "Soil_Survey_Complex.shp")) |>
+#   janitor::clean_names() |>
+#   st_transform(crs = crs)
+
+# 2024 crop forecast
+crop <- read.csv(file.path(project_dir, "forecast_project_data", "data", "crop_yield_forecast_by_CAR.csv")) |>
+  janitor::clean_names()
+crop_sf <- st_as_sf(crop, coords = c("longitude", "latitude"), crs = 4326) |>
+  st_transform(crs = crs)
+
+# Historical crop data
+crop_hist <- read.csv(file.path(project_dir, "forecast_project_data", "data", "historical_actual_crop_yield_by_CAR.csv")) |>
+  janitor::clean_names()
+crop_hist_sf <- st_as_sf(crop_hist, coords = c("longitude", "latitude"), crs = 4326) |>
+  st_transform(crs = crs)
+
+# Weather data
+weather <- read.csv(file.path(project_dir, "monthly_weather.csv")) |>
+  st_as_sf(coords = c("x", "y"), crs = 4326) |>
+  st_transform(crs = crs)
+```
+
+https://geohub.lio.gov.on.ca/datasets/af9f7332322044ea992c2701cc326774_6/explore?location=43.964174%2C-83.643395%2C2.96
+
+https://www12.statcan.gc.ca/census-recensement/2021/geo/sip-pis/boundary-limites/index2021-eng.cfm?year=21
+
+
+```{r, echo=FALSE}
+
+
+# Spatial filter for soil profiles in Ontario
+soil_ontario <- soil_data[ontario_district, ] |>
+  st_jitter(0.002)
+
+```
+
+
+```{r}
+
+# Spatial filter for current crop data in Ontario
+ontario_crop <- crop_sf[ontario, ]
+
+
+```
+
+
+```{r, echo=FALSE, fig.cap= "Crops Grown in all Provinces of Canada Vs Crops Grown in Ontario", warning=FALSE}
+
+# crops grown in Canada
+p1<-tm_shape(can)+
+  tm_polygons(col = "gray90", border.col = "white")+
+  
+  tm_shape(crop_sf) +
+  tm_symbols(col = "crop", palette = "YlOrRd", size = 0.3, title = "Crop Yield") 
+
+# crops grown in Ontario
+p2<-tm_shape(ontario_district)+
+  tm_polygons(col = "gray90", border.col = "white")+
+  
+  tm_shape(ontario_crop) +
+  tm_symbols(col = "crop", palette = "YlOrRd", size = 0.3, title = "Crop Yield") 
+
+tmap_arrange(p1, p2, ncol =2)
+```
+ 
+```{r, echo=FALSE, fig.cap= "Distribution of Soil texture and production of field crops across Ontario", warning=FALSE}
+
+#visualizing texture of soil complex in Ontario
+
+tm_shape(ontario_district) +
+  tm_polygons(col = "gray90", border.col = "white") +
+  
+  tm_shape(soil) +
+  tm_fill(col = "atexture1", palette = "Set3", fill_alpha = 2) +  # Or use another soil attribute
+  tm_borders(col = "brown", lwd = 0.3) +
+  
+  tm_shape(ontario_crop) +
+  tm_dots(col = "crop", palette = "YlOrRd", size = 0.5, title = "Crop Yield") +
+  
+  tm_layout(main.title = "Soil Complex and Field Crop Production in Ontario",
+            legend.outside = TRUE,
+            frame = FALSE)
+
+
+```
+
+```{r}
+
+# Visualize Districts by Regions
+ggplot(ontario_district) +
+  geom_sf(aes(fill = region_nam), color = "white") + 
+  scale_fill_brewer(palette = "Set2") + 
+  theme_minimal() +
+  labs(title = "Ontario Districts by Region",
+       fill = "Region")
+
+```
+
+```{r, echo = FALSE, fig.cap = "Weather Stations across Ontario"}
+tm_shape(ontario_district)+
+  tm_polygons()+
+  tm_shape(weather)+
+  tm_dots(size =0.3, 
+          col = "station_name")+
+  tm_layout(frame = FALSE,
+            legend.outside = TRUE,
+            main.title = "Weather Stations in Ontario")
+```
+
+## Kriging for soil pH across ontario districts
+
+```{r}
+variogram = variogram(value_avg~1, soil_ontario) 
+```
+
+```{r, echo = FALSE, fig.cap = "Variogram of soil measurements(phH values) in Indiana. The number beside the points indicates the number of points from the variogram cloud that were in that particular bin."}
+variogram |>
+  plot(plot.numbers =TRUE,
+       ylab =expression(gamma(h)),
+       xlab = "Distance (h) in metres",
+       pch =16)
+```
+
+```{r}
+# different variogram models 
+variogram_spherical  = fit.variogram(variogram, vgm(1, "Sph", 50000, 1))
+variogram_gaussian = fit.variogram(variogram, vgm(1, "Gau", 40000, 1))
+variogram_exponential = fit.variogram(variogram, vgm(1, "Exp", 50000, 1))
+```
+
+```{r, echo = FALSE, fig.cap = "Visualizing different variogram models"}
+#plot the various models
+plot(gamma~dist, variogram,
+     ylab =expression(gamma(h)),
+     xlab = "Distance (h) in metres",
+     pch =16)
+lines(variogramLine(variogram_exponential, 1.075 * max(variogram$dist)), 
+      lty = 1, col = 'purple', lwd = 2)
+lines(variogramLine(variogram_spherical, 1.075 * max(variogram$dist)), 
+      lty = 1, col = 'orange', lwd = 2)
+lines(variogramLine(variogram_gaussian, 1.075 * max(variogram$dist)), 
+      lty = 1, col = 'green', lwd = 2)
+legend(x = "bottomright", legend = c("Exponential","Spherical","Gaussian"), 
+       col = c("purple","orange","green"), 
+       lty = c(1,1,1),
+       lwd = c(2,2,2))
+```
+
+```{r, echo =FALSE, fig.cap = "Anisotropic sample variograms"}
+# Anisotropic variogram models
+variogram_anis = variogram(value_avg~1, soil_ontario, alpha = c(0,45,90,135))
+
+variogram_anis |> ggplot(aes(x= dist, y=gamma))+
+  geom_point()+
+  facet_grid(.~dir.hor)
+
+```
+
+
+```{r}
+# block kriging to identify ideal pH
+block_krige <- krige(value_avg~1, soil_ontario,
+                     ontario_district, variogram_gaussian, block = c(10000, 10000))
+```
+
+```{r}
+#block kriging for counties with ideal pH suitable for agriculture
+block_krige$suitable <- ifelse(block_krige$var1.pred >= 6.0 &
+                        block_krige$var1.pred <= 7.5,
+                        "Suitable", "Not Suitable")
+
+```
+
+
+
+```{r, echo = FALSE, fig.cap = "Comparing block-kriged averages (left-blues) to block-kriged averages (right-greens). Note that the green block-kriged values tend to define suitability better."}
+
+
+
+# Plot 1: pH Range
+gg1 <- ggplot(block_krige) +
+  geom_sf(aes(fill = var1.pred), color = "white") +
+  scale_fill_viridis_c(name = "pH Range") +  # or use scale_fill_distiller()
+  theme_minimal() +
+  theme(legend.position = "right") +
+  ggtitle("Block-Kriged pH Range")
+
+# Plot 2: Suitability
+gg2 <- ggplot(block_krige) +
+  geom_sf(aes(fill = suitable), color = "white") +
+  scale_fill_manual(
+    values = c("lightgreen", "darkgreen"),
+    name = "pH Suitability"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "right") +
+  ggtitle("Districts with Suitable Soil pH")
+
+# Arrange side-by-side
+gg1 + gg2  # using patchwork
+
+
+```
+
+## Formating crop data for modeling
+
+```{r}
+
+
+# 1. Add lon/lat to original sf object
+crop_hist_sf <- crop_hist_sf %>%
+  mutate(
+    lon = st_coordinates(geometry)[, 1],
+    lat = st_coordinates(geometry)[, 2]
+  )
+
+# 2. Pivot both yield and area to long format
+yield_long <- crop_hist_sf %>%
+  st_drop_geometry() %>%
+  pivot_longer(
+    cols = starts_with("y"),
+    names_to = "year",
+    names_prefix = "y",
+    values_to = "yield"
+  )
+
+area_long <- crop_hist_sf %>%
+  st_drop_geometry() %>%
+  pivot_longer(
+    cols = starts_with("a"),
+    names_to = "year",
+    names_prefix = "a",
+    values_to = "area"
+  )
+
+# 3. Join them back together
+crop_long <- left_join(yield_long, area_long,
+                       by = c("caruid", "crop", "year", "lon", "lat"))
+
+# 4. Final touch: convert year to numeric
+crop_long <- crop_long %>%
+  mutate(year = as.integer(year)) %>%
+dplyr::select(year, caruid, crop, yield, area, lon, lat) |>
+dplyr:: filter(yield != -999, area != -999)|>
+  st_as_sf(coords = c("lon", "lat"), crs = crs)
+
+
+
+
+```
+filter for only interested crops in Ontario
+```{r}
+
+
+#select interested 3 field crops
+selected_crops <- c("soybean", "corn", "winter_wheat")
+
+
+crop_filtered <- crop_long %>%
+  filter(crop %in% selected_crops)
+
+#match crs
+crop_filtered <- st_transform(crop_filtered, st_crs(ontario_district))
+
+# Spatial filter
+crop_ontario <- crop_filtered[ontario_district, ] %>%
+  mutate(x = st_coordinates(.)[,1],
+         y = st_coordinates(.)[,2])
+
+
+# Spatial join: assign district name to each crop row
+#crop_ontario <- st_join(crop_ontario, ontario_district %>% 
+                          dplyr:: select(ogf_id, district_n))
+
+
+
+```
+##currently working on this to see if it works
+```{r}
+
+library(spdep)
+library(INLA)
+
+# Convert to spatial polygons if sf
+ontario_sp <- as_Spatial(st_geometry(ontario_district))
+nb <- poly2nb(ontario_sp)
+nb2INLA("ontario.graph", nb)
+
+
+
+
+```
+
+```{r}
+#assign district ids
+crop_ontario$ogf_id <- match(crop_ontario$district_n, ontario_district$district_n)
+
+
+```
+
+
+
+build the INLA model
+
+```{r}
+formula <- yield ~ 
+  f(ogf_id, model = "bym", graph = "ontario.graph") +
+  f(year, model = "rw1") +
+  f(crop, model = "iid") +
+  area
+
+result <- inla(
+  formula, 
+  family = "gaussian",  # or "gamma" if yield is skewed
+  data = crop_ontario,
+  control.predictor = list(compute = TRUE),
+  control.compute = list(dic = TRUE, waic = TRUE)
+)
+
+```
+
+
+
+## Weather Data
+
+Looking at trends in the weather.  Initial Kriging for the weather data
+
+```{r, echo=false}
+weather <- weather %>%
+  mutate(
+    x = st_coordinates(.)[, 1],
+    y = st_coordinates(.)[, 2]
+  )
+
+#weather during corn growing season
+#may-october
+corn_trend <- weather %>%
+  filter(month >= 5 & month <= 10) %>%
+  group_by(year) %>%
+  summarise(
+    avg_temp = mean(mean_temp, na.rm = TRUE),
+    total_precip = mean(total_precip, na.rm = TRUE),
+    avg_max_humidity = mean(max_humidity, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Plot 1: Avg Temperature
+p1 <- ggplot(corn_trend, aes(x = year, y = avg_temp)) +
+  geom_line(color = "firebrick", size = 1) +
+  labs(title = "Avg Temp (Corn Growing Season)", y = "°C", x = NULL) +
+  theme_minimal()
+
+# Plot 2: Total Precipitation
+p2 <- ggplot(corn_trend, aes(x = year, y = total_precip)) +
+  geom_line(color = "steelblue", size = 1) +
+  labs(title = "Total Precipitation (Corn Season)", y = "cm", x = NULL) +
+  theme_minimal()
+
+# Plot 3: Max Humidity
+p3 <- ggplot(corn_trend, aes(x = year, y = avg_max_humidity)) +
+  geom_line(color = "forestgreen", size = 1) +
+  labs(title = "Avg Max Humidity (Corn Season)", y = "%", x = "Year") +
+  theme_minimal()
+
+(p1 | p3) / p2
+
+```
+```{r}
+#mid summer rain
+mid_summer_corn_trend <- weather %>%
+  filter(month >= 7 & month <= 8) %>%
+  group_by(year) %>%
+  summarise(
+    avg_temp = mean(mean_temp, na.rm = TRUE),
+    total_precip = mean(total_precip, na.rm = TRUE),
+    avg_max_humidity = mean(max_humidity, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Plot 2: Total Precipitation
+mid_summer_corn <- ggplot(mid_summer_corn_trend, aes(x = year, y = total_precip)) +
+  geom_line(color = "steelblue", size = 1) +
+  labs(title = "Total Precipitation (Mid Summer Corn Season)", y = "cm", x = NULL) +
+  theme_minimal()
+
+mid_summer_corn
+```
+
+```{r}
+
+#weather during soy beans growing period
+#may-september
+soy_trend <- weather %>%
+  filter(month >= 5 & month <= 9) %>%
+  group_by(year) %>%
+  summarise(
+    avg_temp = mean(mean_temp, na.rm = TRUE),
+    total_precip = mean(total_precip, na.rm = TRUE),
+    avg_max_humidity = mean(max_humidity, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Plots for soybeans
+soy_temp <- ggplot(soy_trend, aes(x = year, y = avg_temp)) +
+  geom_line(color = "orange3", size = 1) +
+  labs(title = "Avg Temp (Soybean Growing Season)", y = "°C", x = NULL) +
+  theme_minimal()
+
+soy_precip <- ggplot(soy_trend, aes(x = year, y = total_precip)) +
+  geom_line(color = "dodgerblue3", size = 1) +
+  labs(title = "Total Precipitation (Soybean Season)", y = "cm", x = NULL) +
+  theme_minimal()
+
+soy_humid <- ggplot(soy_trend, aes(x = year, y = avg_max_humidity)) +
+  geom_line(color = "seagreen", size = 1) +
+  labs(title = "Avg Max Humidity (Soybean Season)", y = "%", x = "Year") +
+  theme_minimal()
+
+(soy_temp | soy_humid) / soy_precip
+
+```
+
+```{r}
+
+summer_soy_trend <- weather %>%
+  filter(month >= 6 & month <= 8) %>%
+  group_by(year) %>%
+  summarise(
+    avg_temp = mean(mean_temp, na.rm = TRUE),
+    total_precip = mean(total_precip, na.rm = TRUE),
+    avg_max_humidity = mean(max_humidity, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+summer_soy_precip <- ggplot(summer_soy_trend, aes(x = year, y = total_precip)) +
+  geom_line(color = "dodgerblue3", size = 1) +
+  labs(title = "Total Precipitation (Summer Soybean Season)", y = "cm", x = NULL) +
+  theme_minimal()
+
+summer_soy_precip
+```
+
+```{r}
+
+#weather during winter wheat growing period
+#october-July (2 years to grow)
+weather <- weather %>%
+  mutate(wheat_year = ifelse(month >= 10, year + 1, year))
+
+wheat_trend <- weather %>%
+  filter(month %in% c(10, 11, 12, 1, 2, 3, 4, 5, 6, 7)) %>%
+  group_by(wheat_year) %>%
+  summarise(
+    avg_temp = mean(mean_temp, na.rm = TRUE),
+    total_precip = mean(total_precip, na.rm = TRUE),
+    avg_max_humidity = mean(max_humidity, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  rename(year = wheat_year)
+  
+# Plots for winter wheat
+wheat_temp <- ggplot(wheat_trend, aes(x = year, y = avg_temp)) +
+  geom_line(color = "darkred", size = 1) +
+  labs(title = "Avg Temp (Winter Wheat Season)", y = "°C", x = NULL) +
+  theme_minimal()
+
+wheat_precip <- ggplot(wheat_trend, aes(x = year, y = total_precip)) +
+  geom_line(color = "deepskyblue4", size = 1) +
+  labs(title = "Total Precipitation (Wheat Season)", y = "cm", x = NULL) +
+  theme_minimal()
+
+wheat_humid <- ggplot(wheat_trend, aes(x = year, y = avg_max_humidity)) +
+  geom_line(color = "darkolivegreen4", size = 1) +
+  labs(title = "Avg Max Humidity (Wheat Season)", y = "%", x = "Year") +
+  theme_minimal()
+
+(wheat_temp | wheat_humid) / wheat_precip
+
+```
+
+
+
+
+
+
+
+
+
+
