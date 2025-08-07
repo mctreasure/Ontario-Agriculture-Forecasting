@@ -6,8 +6,7 @@ library(ggplot2)
 library(stringr)
 
 # 2024
-#corn_2024 <- read.xlsx("/Users/sarithakumarik/Documents/DATA6500/Project/Crop Data/corn.xlsx", sheet = 1)
-corn_2024 <- read.xlsx("C:/Users/mckay/OneDrive - University of Guelph/Masters/DATA 6500/Final Project/Crop Data/corn.xlsx", sheet = 1)
+corn_2024 <- read.xlsx("/Users/sarithakumarik/Documents/DATA6500/Project/Crop Data/corn.xlsx", sheet = 1)
 corn_2024[2, 1] <- corn_2024[1, 1]
 corn_2024 <- corn_2024[-1, ]
 colnames(corn_2024) <- as.character(corn_2024[1, ])
@@ -21,7 +20,7 @@ colnames(corn_2024)[1] <- "County"
 corn_2024 <- cbind(Year = 2024, corn_2024)
 
 # 2023
-corn_2023 <- read.xlsx("C:/Users/mckay/OneDrive - University of Guelph/Masters/DATA 6500/Final Project/Crop Data/corn.xlsx", sheet = 2)
+corn_2023 <- read.xlsx("/Users/sarithakumarik/Documents/DATA6500/Project/Crop Data/corn.xlsx", sheet = 2)
 corn_2023[2, 1] <- corn_2023[1, 1]
 corn_2023 <- corn_2023[-1, ]
 colnames(corn_2023) <- as.character(corn_2023[1, ])
@@ -35,7 +34,7 @@ colnames(corn_2023)[1] <- "County"
 corn_2023 <- cbind(Year = 2023, corn_2023)
 
 # 2022
-corn_2022 <-read.xlsx("C:/Users/mckay/OneDrive - University of Guelph/Masters/DATA 6500/Final Project/Crop Data/corn.xlsx", sheet = 3)
+corn_2022 <- read.xlsx("/Users/sarithakumarik/Documents/DATA6500/Project/Crop Data/corn.xlsx", sheet = 3)
 corn_2022[2, 1] <- corn_2022[1, 1]
 corn_2022 <- corn_2022[-1, ]
 colnames(corn_2022) <- as.character(corn_2022[1, ])
@@ -49,7 +48,7 @@ colnames(corn_2022)[1] <- "County"
 corn_2022 <- cbind(Year = 2022, corn_2022)
 
 # 2021
-corn_2021 <- read.xlsx("C:/Users/mckay/OneDrive - University of Guelph/Masters/DATA 6500/Final Project/Crop Data/corn.xlsx", sheet = 4)
+corn_2021 <- read.xlsx("/Users/sarithakumarik/Documents/DATA6500/Project/Crop Data/corn.xlsx", sheet = 4)
 corn_2021[2, 1] <- corn_2021[1, 1]
 corn_2021 <- corn_2021[-1, ]
 colnames(corn_2021) <- as.character(corn_2021[1, ])
@@ -63,7 +62,7 @@ colnames(corn_2021)[1] <- "County"
 corn_2021 <- cbind(Year = 2021, corn_2021)
 
 # 2020
-corn_2020 <- read.xlsx("C:/Users/mckay/OneDrive - University of Guelph/Masters/DATA 6500/Final Project/Crop Data/corn.xlsx", sheet = 5)
+corn_2020 <- read.xlsx("/Users/sarithakumarik/Documents/DATA6500/Project/Crop Data/corn.xlsx", sheet = 5)
 corn_2020[2, 1] <- corn_2020[1, 1]
 corn_2020 <- corn_2020[-1, ]
 colnames(corn_2020) <- as.character(corn_2020[1, ])
@@ -77,7 +76,7 @@ colnames(corn_2020)[1] <- "County"
 corn_2020 <- cbind(Year = 2020, corn_2020)
 
 # 2019
-corn_2019 <- read.xlsx("C:/Users/mckay/OneDrive - University of Guelph/Masters/DATA 6500/Final Project/Crop Data/corn.xlsx", sheet = 6)
+corn_2019 <- read.xlsx("/Users/sarithakumarik/Documents/DATA6500/Project/Crop Data/corn.xlsx", sheet = 6)
 corn_2019[2, 1] <- corn_2019[1, 1]
 corn_2019 <- corn_2019[-1, ]
 colnames(corn_2019) <- as.character(corn_2019[1, ])
@@ -91,7 +90,7 @@ colnames(corn_2019)[1] <- "County"
 corn_2019 <- cbind(Year = 2019, corn_2019)
 
 # 2018
-corn_2018 <- read.xlsx("C:/Users/mckay/OneDrive - University of Guelph/Masters/DATA 6500/Final Project/Crop Data/corn.xlsx", sheet = 7)
+corn_2018 <- read.xlsx("/Users/sarithakumarik/Documents/DATA6500/Project/Crop Data/corn.xlsx", sheet = 7)
 # corn_2018[2, 1] <- corn_2018[1, 1]
 # corn_2018 <- corn_2018[-1, ]
 colnames(corn_2018) <- as.character(corn_2018[1, ])
@@ -105,7 +104,7 @@ colnames(corn_2018)[1] <- "County"
 corn_2018 <- cbind(Year = 2018, corn_2018)
 
 # 2017
-corn_2017 <- read.xlsx("C:/Users/mckay/OneDrive - University of Guelph/Masters/DATA 6500/Final Project/Crop Data/corn.xlsx", sheet = 8)
+corn_2017 <- read.xlsx("/Users/sarithakumarik/Documents/DATA6500/Project/Crop Data/corn.xlsx", sheet = 8)
 #corn_2017[2, 1] <- corn_2017[1, 1]
 #corn_2017 <- corn_2017[-1, ]
 colnames(corn_2017) <- as.character(corn_2017[1, ])
@@ -119,7 +118,7 @@ colnames(corn_2017)[1] <- "County"
 corn_2017 <- cbind(Year = 2017, corn_2017)
 
 # 2016
-corn_2016 <- read.xlsx("C:/Users/mckay/OneDrive - University of Guelph/Masters/DATA 6500/Final Project/Crop Data/corn.xlsx", sheet = 9)
+corn_2016 <- read.xlsx("/Users/sarithakumarik/Documents/DATA6500/Project/Crop Data/corn.xlsx", sheet = 9)
 #corn_2016[2, 1] <- corn_2016[1, 1]
 #corn_2016 <- corn_2016[-1, ]
 colnames(corn_2016) <- as.character(corn_2016[1, ])
@@ -133,7 +132,7 @@ colnames(corn_2016)[1] <- "County"
 corn_2016 <- cbind(Year = 2016, corn_2016)
 
 # 2015
-corn_2015 <- read.xlsx("C:/Users/mckay/OneDrive - University of Guelph/Masters/DATA 6500/Final Project/Crop Data/corn.xlsx", sheet = 10)
+corn_2015 <- read.xlsx("/Users/sarithakumarik/Documents/DATA6500/Project/Crop Data/corn.xlsx", sheet = 10)
 #corn_2015[2, 1] <- corn_2015[1, 1]
 #corn_2015 <- corn_2015[-1, ]
 colnames(corn_2015) <- as.character(corn_2015[1, ])
@@ -147,7 +146,7 @@ colnames(corn_2015)[1] <- "County"
 corn_2015 <- cbind(Year = 2015, corn_2015)
 
 # 2014
-corn_2014 <- read.xlsx("C:/Users/mckay/OneDrive - University of Guelph/Masters/DATA 6500/Final Project/Crop Data/corn.xlsx", sheet = 11)
+corn_2014 <- read.xlsx("/Users/sarithakumarik/Documents/DATA6500/Project/Crop Data/corn.xlsx", sheet = 11)
 #corn_2014[2, 1] <- corn_2014[1, 1]
 #corn_2014 <- corn_2014[-1, ]
 colnames(corn_2014) <- as.character(corn_2014[1, ])
@@ -161,7 +160,7 @@ colnames(corn_2014)[1] <- "County"
 corn_2014 <- cbind(Year = 2014, corn_2014)
 
 # 2013
-corn_2013 <- read.xlsx("C:/Users/mckay/OneDrive - University of Guelph/Masters/DATA 6500/Final Project/Crop Data/corn.xlsx", sheet = 12)
+corn_2013 <- read.xlsx("/Users/sarithakumarik/Documents/DATA6500/Project/Crop Data/corn.xlsx", sheet = 12)
 #corn_2013[2, 1] <- corn_2013[1, 1]
 #corn_2013 <- corn_2013[-1, ]
 colnames(corn_2013) <- as.character(corn_2013[1, ])
@@ -175,7 +174,7 @@ colnames(corn_2013)[1] <- "County"
 corn_2013 <- cbind(Year = 2013, corn_2013)
 
 # 2012
-corn_2012 <- read.xlsx("C:/Users/mckay/OneDrive - University of Guelph/Masters/DATA 6500/Final Project/Crop Data/corn.xlsx", sheet = 13)
+corn_2012 <- read.xlsx("/Users/sarithakumarik/Documents/DATA6500/Project/Crop Data/corn.xlsx", sheet = 13)
 #corn_2012[2, 1] <- corn_2012[1, 1]
 #corn_2012 <- corn_2012[-1, ]
 colnames(corn_2012) <- as.character(corn_2012[1, ])
@@ -189,7 +188,7 @@ colnames(corn_2012)[1] <- "County"
 corn_2012 <- cbind(Year = 2012, corn_2012)
 
 # 2011
-corn_2011 <- read.xlsx("C:/Users/mckay/OneDrive - University of Guelph/Masters/DATA 6500/Final Project/Crop Data/corn.xlsx", sheet = 14)
+corn_2011 <- read.xlsx("/Users/sarithakumarik/Documents/DATA6500/Project/Crop Data/corn.xlsx", sheet = 14)
 #corn_2011[2, 1] <- corn_2011[1, 1]
 #corn_2011 <- corn_2011[-1, ]
 colnames(corn_2011) <- as.character(corn_2011[1, ])
@@ -203,7 +202,7 @@ colnames(corn_2011)[1] <- "County"
 corn_2011 <- cbind(Year = 2011, corn_2011)
 
 # 2010
-corn_2010 <- read.xlsx("C:/Users/mckay/OneDrive - University of Guelph/Masters/DATA 6500/Final Project/Crop Data/corn.xlsx", sheet = 15)
+corn_2010 <- read.xlsx("/Users/sarithakumarik/Documents/DATA6500/Project/Crop Data/corn.xlsx", sheet = 15)
 #corn_2010[2, 1] <- corn_2010[1, 1]
 #corn_2010 <- corn_2010[-1, ]
 colnames(corn_2010) <- as.character(corn_2010[1, ])
@@ -217,7 +216,7 @@ colnames(corn_2010)[1] <- "County"
 corn_2010 <- cbind(Year = 2010, corn_2010)
 
 # 2009
-corn_2009 <- read.xlsx("C:/Users/mckay/OneDrive - University of Guelph/Masters/DATA 6500/Final Project/Crop Data/corn.xlsx", sheet = 16)
+corn_2009 <- read.xlsx("/Users/sarithakumarik/Documents/DATA6500/Project/Crop Data/corn.xlsx", sheet = 16)
 #corn_2009[2, 1] <- corn_2009[1, 1]
 #corn_2009 <- corn_2009[-1, ]
 colnames(corn_2009) <- as.character(corn_2009[1, ])
@@ -232,7 +231,7 @@ corn_2009 <- cbind(Year = 2009, corn_2009)
 
 
 # 2008
-corn_2008 <- read.xlsx("C:/Users/mckay/OneDrive - University of Guelph/Masters/DATA 6500/Final Project/Crop Data/corn.xlsx", sheet = 17)
+corn_2008 <- read.xlsx("/Users/sarithakumarik/Documents/DATA6500/Project/Crop Data/corn.xlsx", sheet = 17)
 #corn_2008[2, 1] <- corn_2008[1, 1]
 #corn_2008 <- corn_2008[-1, ]
 colnames(corn_2008) <- as.character(corn_2008[1, ])
@@ -246,7 +245,7 @@ colnames(corn_2008)[1] <- "County"
 corn_2008 <- cbind(Year = 2008, corn_2008)
 
 # 2007
-corn_2007 <- read.xlsx("C:/Users/mckay/OneDrive - University of Guelph/Masters/DATA 6500/Final Project/Crop Data/corn.xlsx", sheet = 18)
+corn_2007 <- read.xlsx("/Users/sarithakumarik/Documents/DATA6500/Project/Crop Data/corn.xlsx", sheet = 18)
 #corn_2007[2, 1] <- corn_2007[1, 1]
 #corn_2007 <- corn_2007[-1, ]
 colnames(corn_2007) <- as.character(corn_2007[1, ])
@@ -260,7 +259,7 @@ colnames(corn_2007)[1] <- "County"
 corn_2007 <- cbind(Year = 2007, corn_2007)
 
 # 2006
-corn_2006 <- read.xlsx("C:/Users/mckay/OneDrive - University of Guelph/Masters/DATA 6500/Final Project/Crop Data/corn.xlsx", sheet = 19)
+corn_2006 <- read.xlsx("/Users/sarithakumarik/Documents/DATA6500/Project/Crop Data/corn.xlsx", sheet = 19)
 #corn_2006[2, 1] <- corn_2006[1, 1]
 #corn_2006 <- corn_2006[-1, ]
 colnames(corn_2006) <- as.character(corn_2006[1, ])
@@ -274,7 +273,7 @@ colnames(corn_2006)[1] <- "County"
 corn_2006 <- cbind(Year = 2006, corn_2006)
 
 # 2005
-corn_2005 <- read.xlsx("C:/Users/mckay/OneDrive - University of Guelph/Masters/DATA 6500/Final Project/Crop Data/corn.xlsx", sheet = 20)
+corn_2005 <- read.xlsx("/Users/sarithakumarik/Documents/DATA6500/Project/Crop Data/corn.xlsx", sheet = 20)
 #corn_2005[2, 1] <- corn_2005[1, 1]
 #corn_2005 <- corn_2005[-1, ]
 colnames(corn_2005) <- as.character(corn_2005[1, ])
@@ -288,7 +287,7 @@ colnames(corn_2005)[1] <- "County"
 corn_2005 <- cbind(Year = 2005, corn_2005)
 
 # 2004
-corn_2004 <- read.xlsx("C:/Users/mckay/OneDrive - University of Guelph/Masters/DATA 6500/Final Project/Crop Data/corn.xlsx", sheet = 21)
+corn_2004 <- read.xlsx("/Users/sarithakumarik/Documents/DATA6500/Project/Crop Data/corn.xlsx", sheet = 21)
 colnames(corn_2004) <- as.character(corn_2004[1, ])
 corn_2004 <- corn_2004[-1, ]
 ontario_row <- which(apply(corn_2004, 1, function(row) any(row == "Ontario")))
@@ -300,8 +299,6 @@ corn_2004 <- cbind(Year = 2004, corn_2004)
 
 
 corn_data <- bind_rows(mget(paste0("corn_", 2004:2024)))
-
-#head(corn_data)
 
 
 corn_data[corn_data == "-" | corn_data == "x"] <- 0
@@ -319,9 +316,6 @@ corn_data[cols_to_convert] <- lapply(corn_data[cols_to_convert], function(x) {
                       sprintf("%.2f", rounded))
   return(formatted)
 })
-
-#upload to csv
-#write.csv(corn_data, "C:/Users/mckay/OneDrive - University of Guelph/Masters/DATA 6500/Final Project/corn_data_cleaned.csv", row.names = FALSE)
 
 
 # https://censusmapper.ca/api#api_overview
@@ -350,13 +344,8 @@ corn_data_with_geom <- corn_data %>%
   ) %>%
   ungroup()
 
-
 # Step 3: Convert to sf object
 corn_data_sf <- st_as_sf(corn_data_with_geom, crs = st_crs(counties_geometry))
-
-head(corn_data_sf)
-
-st_write(corn_data_sf, "C:/Users/mckay/OneDrive - University of Guelph/Masters/DATA 6500/Final Project/corn_data.gpkg")
 
 corn_2024_sf <- corn_data_sf %>%
   filter(Year == 2024)
@@ -369,10 +358,13 @@ ggplot(data = corn_2024_sf) +
   geom_sf(aes(fill = `Yield (bushels/ac)`), color = "gray30") +
   scale_fill_viridis_c(option = "D") +
   labs(
-    title = "Corn Yield by County (2024)",
+    title = "Corn Yield by County - 2024",
     fill = "Yield (bu/ac)"
   ) +
   theme_minimal()
+
+brant_data <- corn_data_sf %>%
+  filter(County == "Brant")
 
 # Prepare data
 brant_data <- brant_data %>%
@@ -389,10 +381,35 @@ ggplot(brant_data, aes(x = Year, y = Yield)) +
   labs(
     title = "Corn Yield Trend in Brant County",
     x = "Year",
-    y = "Yield"
+    y = "Yield (bu/ac)"
   )
 
-#ggsave("/Users/sarithakumarik/Downloads/brant_yield_plot.png", width = 5, height = 3, dpi = 300)
+ggsave("/Users/sarithakumarik/Downloads/brant_yield_plot.png", width = 5, height = 3, dpi = 300)
 
+# Filter for Wellington County
+wellington_data <- corn_data_sf %>%
+  filter(County == "Wellington")
+
+# Prepare data
+wellington_data <- wellington_data %>%
+  mutate(
+    Year = as.numeric(Year),
+    Yield = as.numeric(`Yield (bushels/ac)`)
+  ) %>%
+  filter(!is.na(Year), !is.na(Yield))
+
+# Plot
+ggplot(wellington_data, aes(x = Year, y = Yield)) +
+  geom_line(color = "darkgreen", linewidth = 1) +
+  scale_y_continuous(limits = c(100, NA), expand = c(0, 0)) +
+  theme_minimal(base_size = 14) +
+  labs(
+    title = "Corn Yield Trend in Wellington County",
+    x = "Year",
+    y = "Yield (bu/ac)"
+  )
+
+# Save the plot
+ggsave("/Users/sarithakumarik/Downloads/wellington_yield_plot.png", width = 5, height = 3, dpi = 300)
 
 
