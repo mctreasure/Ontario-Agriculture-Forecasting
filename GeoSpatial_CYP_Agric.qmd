@@ -12,7 +12,7 @@ Quarto enables you to weave together content and executable code into a finished
 
 When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
 
-```{r}
+```{r, include = FALSE}
 
 library(tmap)
 library(tidyverse)
@@ -31,6 +31,8 @@ library(grid)
 library(leaflet)
 library(patchwork)  # for arranging plots like tmap_arrange
 library(tidyr)
+library(gstat)
+
 
 ```
 
@@ -58,9 +60,9 @@ ontario_district <- st_read(file.path(project_dir, "forecast_project_data", "dat
   st_transform(crs = crs)
 
 # Soil complex
-# soil <- st_read(file.path(project_dir, "forecast_project_data", "data", "Soil_Survey_Complex.shp")) |>
-#   janitor::clean_names() |>
-#   st_transform(crs = crs)
+soil <- st_read(file.path(project_dir, "forecast_project_data", "data", "Soil_Survey_Complex.shp")) |>
+  janitor::clean_names() |>
+  st_transform(crs = crs)
 
 # 2024 crop forecast
 crop <- read.csv(file.path(project_dir, "forecast_project_data", "data", "crop_yield_forecast_by_CAR.csv")) |>
@@ -72,6 +74,11 @@ crop_sf <- st_as_sf(crop, coords = c("longitude", "latitude"), crs = 4326) |>
 crop_hist <- read.csv(file.path(project_dir, "forecast_project_data", "data", "historical_actual_crop_yield_by_CAR.csv")) |>
   janitor::clean_names()
 crop_hist_sf <- st_as_sf(crop_hist, coords = c("longitude", "latitude"), crs = 4326) |>
+  st_transform(crs = crs)
+
+#ontario corn data
+corn_data_sf <- st_read(file.path(project_dir, "corn_data.gpkg")) |>
+  janitor::clean_names() |>
   st_transform(crs = crs)
 
 # Weather data
@@ -89,7 +96,7 @@ https://www12.statcan.gc.ca/census-recensement/2021/geo/sip-pis/boundary-limites
 
 
 # Spatial filter for soil profiles in Ontario
-soil_ontario <- soil_data[ontario_district, ] |>
+soil_ontario <- soil[ontario_district, ] |>
   st_jitter(0.002)
 
 ```
@@ -396,7 +403,7 @@ weather <- weather %>%
 #may-october
 corn_trend <- weather %>%
   filter(month >= 5 & month <= 10) %>%
-  group_by(year) %>%
+  group_by(year, month) %>%
   summarise(
     avg_temp = mean(mean_temp, na.rm = TRUE),
     total_precip = mean(total_precip, na.rm = TRUE),
@@ -425,6 +432,7 @@ p3 <- ggplot(corn_trend, aes(x = year, y = avg_max_humidity)) +
 (p1 | p3) / p2
 
 ```
+
 ```{r}
 #mid summer rain
 mid_summer_corn_trend <- weather %>%
@@ -462,7 +470,7 @@ soy_trend <- weather %>%
 
 # Plots for soybeans
 soy_temp <- ggplot(soy_trend, aes(x = year, y = avg_temp)) +
-  geom_line(color = "orange3", size = 1) +
+  geom_line(color = "darkred", size = 1) +
   labs(title = "Avg Temp (Soybean Growing Season)", y = "°C", x = NULL) +
   theme_minimal()
 
@@ -525,7 +533,7 @@ wheat_temp <- ggplot(wheat_trend, aes(x = year, y = avg_temp)) +
   theme_minimal()
 
 wheat_precip <- ggplot(wheat_trend, aes(x = year, y = total_precip)) +
-  geom_line(color = "deepskyblue4", size = 1) +
+  geom_line(color = "dodgerblue3", size = 1) +
   labs(title = "Total Precipitation (Wheat Season)", y = "cm", x = NULL) +
   theme_minimal()
 
@@ -538,12 +546,352 @@ wheat_humid <- ggplot(wheat_trend, aes(x = year, y = avg_max_humidity)) +
 
 ```
 
+```{r}
+
+(p1 | soy_temp | wheat_temp) / (mid_summer_corn | summer_soy_precip | wheat_precip) / (p3 | soy_humid | wheat_humid)
+
+```
+## Soil Cleaning 
+```{r}
+soil_clean <- dplyr::select(
+  soil,
+  ogf_id, atexture1, drainage1, slope1, k_factor1, cli1, cli_sys, acres, geometry
+)
+
+soil_clean %>%
+  st_drop_geometry() %>%  # Remove geometry for summary
+  summarise(across(everything(), ~ sum(is.na(.)), .names = "na_{.col}"))
 
 
+head(soil_clean)
+```
+#### Soil Kiging 
+
+```{r, echo=FALSE, include=FALSE}
+library(cancensus)
+
+# https://censusmapper.ca/api#api_overview
+options(cancensus.api_key = "CensusMapper_b3e4e303dcb50fad4050328d7c3a8e67")
+# Get Ontario's province code (35)
+ontario_cd_sf <- get_census(
+  dataset = "CA21",  # 2021 Census
+  regions = list(PR = "35"),  # Ontario
+  level = "CD",  # Census Division
+  geo_format = "sf",  # Return as sf object
+  labels = "short"
+)
+```
+Getting the average slope for the areas
+```{r}
+# Assume `corn_data_sf` contains your full polygon regions
+# Assume `soil_clean` is your soil point data with slope1 values
+
+# 1. Create regular grid for kriging over Ontario extent
+grid <- st_make_grid(
+  corn_data_sf,
+  cellsize = 5000, # adjust for resolution (~5km)
+  what = "centers"
+) %>%
+  st_sf() %>%
+  st_transform(crs = st_crs(soil_clean)) # match CRS
+
+# 2. Krige over grid points
+soil_slope <- soil_clean %>% 
+  filter(!is.na(slope1)) %>%
+  st_transform(st_crs(grid)) %>%
+  st_centroid(of_largest_polygon = TRUE)
+
+soil_sp <- as(soil_slope, "Spatial")
+grid_sp <- as(grid, "Spatial")
+
+v_slope <- variogram(slope1 ~ 1, data = soil_sp)
+model_slope <- fit.variogram(v_slope, model = vgm(psill = 1, model = "Exp", range = 100000, nugget = 0.1))
+
+kriged_grid <- krige(
+  slope1 ~ 1,
+  soil_sp,
+  newdata = grid_sp,
+  model = model_slope,
+  nmax = 30
+)
+
+kriged_grid_sf <- st_as_sf(kriged_grid)
+st_crs(kriged_grid_sf) <- st_crs(corn_data_sf)
 
 
+```
+
+```{r}
+# 1. Join kriged points to corn polygons (each point gets matched to its region)
+joined <- st_join(kriged_grid_sf, corn_data_sf, join = st_within, left = FALSE)
+
+# 2. Calculate average slope1 per region (grouped by the polygon's unique ID)
+# Replace 'region_id' below with the unique identifier column in corn_data_sf
+slope_summary <- joined %>%
+  group_by(county, year) %>%
+  summarise(slope1_avg = mean(var1.pred, na.rm = TRUE))
+
+# 3. Join the slope averages back to the full corn region dataset
+corn_data_sf <- corn_data_sf %>%
+  st_join(slope_summary, by = c("county", "year"))
+
+# Choose any year (e.g., 2004)
+corn_2004 <- corn_data_sf %>% filter(year.x == 2004)
+
+krig_slope <- ggplot(corn_2004) +
+  geom_sf(aes(fill = slope1_avg), color = "grey40") +
+  scale_fill_viridis_c(name = "Avg Slope1", na.value = "white") +
+  labs(
+    title = "Average Kriged Slope1 by Corn Region (2004)",
+    subtitle = "Static soil conditions interpolated from point data",
+    fill = "Slope1"
+  ) +
+  theme_minimal()
+
+```
+
+K Factor- estimate of soil erosion risk
+```{r}
+# Filter and centroid
+soil_k <- soil_clean %>%
+  dplyr::filter(!is.na(k_factor1)) %>%
+  st_transform(st_crs(grid)) %>%
+  st_centroid(of_largest_polygon = TRUE)
+
+# Kriging setup
+soil_sp <- as(soil_k, "Spatial")
+v_k <- variogram(k_factor1 ~ 1, soil_sp)
+model_k <- fit.variogram(v_k, model = vgm(1, "Exp", 100000, 0.1))
+
+# Perform kriging
+kriged_k <- krige(k_factor1 ~ 1, soil_sp, newdata = grid_sp, model = model_k, nmax = 30)
+kriged_k_sf <- st_as_sf(kriged_k) %>%
+  st_set_crs(st_crs(corn_data_sf))
+
+# Join to corn polygons
+joined_k <- st_join(kriged_k_sf, corn_data_sf, join = st_within, left = FALSE)
+
+# Compute regional averages
+k_summary <- joined_k %>%
+  group_by(county.x, year.x) %>%
+  summarise(kfactor_avg = mean(var1.pred, na.rm = TRUE))
+
+# Join back and plot 2004
+corn_k <- corn_data_sf %>%
+  st_join(k_summary, by = c("county.x", "year.x")) %>%
+  filter(year == 2004)
+
+krig_kfactor <- ggplot(corn_k) +
+  geom_sf(aes(fill = kfactor_avg), color = "grey40") +
+  scale_fill_viridis_c(name = "K Factor", na.value = "white") +
+  labs(
+    title = "Average Kriged K Factor by Corn Region (2004)",
+    subtitle = "Erodibility Factor from Soil Data",
+    fill = "K Factor"
+  ) +
+  theme_minimal()
+
+```
+
+```{r, echo=FALSE}
+head(soil_clean)
+```
+
+## Corn Yield
+
+The corn growing season is from May-October.  
+```{r}
+#weather during the corn growing season for each year/station
+weather_corn_gs <- weather %>%
+  filter(month %in% 5:10)
+
+head(weather_corn_gs)
+```
+
+```{r}
+glimpse(corn_data_sf)
+head(soil)
+```
+
+#### 2024 Forecast
+
+```{r, echo=FALSE, include=FALSE}
+
+#attaching a station's information to the yield
+corn_regions <- dplyr::select(corn_data_sf, county, geom)
+
+weather_with_county <- st_join(weather_corn_gs, corn_regions, join = st_nearest_feature)
+
+head(weather_with_county)
+
+#grouping the weather for each county
+weather_avg <- weather_with_county %>%
+  st_drop_geometry() %>%
+  group_by(county, year, month) %>%
+  summarise(
+    mean_temp = mean(mean_temp, na.rm = TRUE),
+    total_precip = mean(total_precip, na.rm = TRUE),
+    max_humidity = mean(max_humidity, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+head(weather_avg)
+
+#reshaping for one weather per month
+weather_wide <- weather_avg %>%
+  pivot_wider(
+    names_from = month,
+    values_from = c(mean_temp, total_precip, max_humidity),
+    names_glue = "{.value}_m{month}"
+  )
+
+```
+
+```{r, echo=FALSE}
+#integrating the soil information
+soil_joined <- st_join(corn_data_sf, soil_clean, join = st_intersects)
+
+soil_info <- soil_joined %>%
+  sf::st_drop_geometry() %>%
+  dplyr::select(county, year, slope1, k_factor1, atexture1, drainage1) %>%
+  distinct()
+```
+
+```{r, echo=FALSE}
+#combining weather and yield information 
+
+#dropping the geometry for now
+corn_yield <- corn_data_sf %>%
+  sf::st_drop_geometry() %>%
+  dplyr::mutate(yield = as.numeric(yield_bushels_ac)) %>%
+  dplyr::select(county, year, yield)
+
+full_corn_data <- corn_yield %>%
+  left_join(weather_wide, by = c("county", "year"))
+
+full_corn_data <- full_corn_data %>%
+  left_join(soil_info, by = c("county", "year"))
+
+full_corn_data<- full_corn_data %>% 
+  dplyr::mutate(
+    atexture1 = factor(atexture1),
+    drainage1 = factor(drainage1)
+  )
+
+head(full_corn_data)
+
+```
 
 
+#### Autoregression 
+```{r}
+#creating a lag to to capture the patterns from the previous time step
+full_corn_data <- full_corn_data %>%
+  arrange(county, year) %>%
+  group_by(county) %>%
+  mutate(yield_lag1 = dplyr::lag(yield, n = 1)) %>%
+  ungroup()
+```
+
+```{r}
+#training and test sets for the ar
+corn_train <- full_corn_data %>% filter(year < 2024)
+corn_test <- full_corn_data %>% filter(year == 2024)
+```
+
+```{r}
+corn_model_ar1_full <- lm(
+  yield ~ yield_lag1 +
+    mean_temp_m5 + mean_temp_m6 + mean_temp_m7 + mean_temp_m8 + mean_temp_m9 + mean_temp_m10 +
+    total_precip_m5 + total_precip_m6 + total_precip_m7 + total_precip_m8 + total_precip_m9 + total_precip_m10 +
+    slope1 + k_factor1 + drainage1 + atexture1,
+  data = corn_train
+)
+```
+
+```{r}
+corn_test$yield_pred_ar1 <- predict(corn_model_ar1_full, newdata = corn_test)
+```
+
+#### Random Walk 1
+
+```{r}
+# Random Walk 1: Predict 2024 yield as the 2023 yield (lag1)
+full_corn_data <- full_corn_data %>%
+  arrange(county, year) %>%
+  group_by(county) %>%
+  mutate(yield_rw1 = lag(yield, n = 1)) %>%  # 2023 yield for 2024 prediction
+  ungroup()
+
+corn_rw1_2024 <- full_corn_data %>%
+  filter(year == 2024, !is.na(yield_rw1))
+
+coern_rw1_model <- lm(
+  yield ~ yield_rw1 + mean_temp_m5 + mean_temp_m6 + mean_temp_m7 + mean_temp_m8 + mean_temp_m9 +
+           total_precip_m5 + total_precip_m6 + total_precip_m7 + total_precip_m8 + total_precip_m9 +
+           slope1 + k_factor1 + atexture1 + drainage1,
+  data = corn_rw1_2024
+)
+
+```
+
+```{r}
+#2024 forecast
+corn_rw1_2024 <- corn_rw1_2024 %>%
+  mutate(yield_pred_rw1_adjusted = predict(rw1_model, newdata = rw1_2024))
+```
+
+#### Random Walk 2
+```{r}
+full_corn_data <- full_corn_data %>%
+  arrange(county, year) %>%
+  group_by(county) %>%
+  mutate(
+    yield_rw2 = 2 * lag(yield, n = 1) - lag(yield, n = 2)
+  ) %>%
+  ungroup()
+
+corn_rw2_2024 <- full_corn_data %>%
+  filter(year == 2024, !is.na(yield_rw2))
+
+corn_rw2_model <- lm(
+  yield ~ yield_rw2 + mean_temp_m5 + mean_temp_m6 + mean_temp_m7 + mean_temp_m8 + mean_temp_m9 +
+           total_precip_m5 + total_precip_m6 + total_precip_m7 + total_precip_m8 + total_precip_m9 +
+           slope1 + k_factor1 + atexture1 + drainage1,
+  data =corn_rw2_2024
+)
+
+```
+
+```{r}
+#2024 forecast
+corn_rw2_2024 <- corn_rw2_2024 %>%
+  mutate(yield_pred_rw2_adjusted = predict(corn_rw2_model, newdata = corn_rw2_2024))
+
+```
+
+#### Model Evaluations
+
+```{r}
+```
+
+```{r}
+#full 2024 
+corn_2024_sf <- corn_data_sf %>%
+  filter(year == 2024)
+
+corn_2024_sf <- corn_2024_sf %>%
+  mutate(`yield_bushels_ac` = as.numeric(`yield_bushels_ac`))
 
 
+real_2024 <- ggplot(data = corn_2024_sf) +
+  geom_sf(aes(fill = `yield_bushels_ac`), color = "gray30") +
+  scale_fill_viridis_c(option = "D") +
+  labs(
+    title = "Corn Yield by County (2024)",
+    fill = "Yield (bu/ac)"
+  ) +
+  theme_minimal()
 
+real_2024
+```
