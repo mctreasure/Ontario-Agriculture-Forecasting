@@ -64,17 +64,17 @@ soil <- st_read(file.path(project_dir, "forecast_project_data", "data", "Soil_Su
   janitor::clean_names() |>
   st_transform(crs = crs)
 
-# 2024 crop forecast
-crop <- read.csv(file.path(project_dir, "forecast_project_data", "data", "crop_yield_forecast_by_CAR.csv")) |>
-  janitor::clean_names()
-crop_sf <- st_as_sf(crop, coords = c("longitude", "latitude"), crs = 4326) |>
-  st_transform(crs = crs)
-
-# Historical crop data
-crop_hist <- read.csv(file.path(project_dir, "forecast_project_data", "data", "historical_actual_crop_yield_by_CAR.csv")) |>
-  janitor::clean_names()
-crop_hist_sf <- st_as_sf(crop_hist, coords = c("longitude", "latitude"), crs = 4326) |>
-  st_transform(crs = crs)
+# # 2024 crop forecast
+# crop <- read.csv(file.path(project_dir, "forecast_project_data", "data", "crop_yield_forecast_by_CAR.csv")) |>
+#   janitor::clean_names()
+# crop_sf <- st_as_sf(crop, coords = c("longitude", "latitude"), crs = 4326) |>
+#   st_transform(crs = crs)
+# 
+# # Historical crop data
+# crop_hist <- read.csv(file.path(project_dir, "forecast_project_data", "data", "historical_actual_crop_yield_by_CAR.csv")) |>
+#   janitor::clean_names()
+# crop_hist_sf <- st_as_sf(crop_hist, coords = c("longitude", "latitude"), crs = 4326) |>
+#   st_transform(crs = crs)
 
 #ontario corn data
 corn_data_sf <- st_read(file.path(project_dir, "corn_data.gpkg")) |>
@@ -583,111 +583,272 @@ ontario_cd_sf <- get_census(
 ```
 Getting the average slope for the areas
 ```{r}
-# Assume `corn_data_sf` contains your full polygon regions
-# Assume `soil_clean` is your soil point data with slope1 values
-
-# 1. Create regular grid for kriging over Ontario extent
-grid <- st_make_grid(
-  corn_data_sf,
-  cellsize = 5000, # adjust for resolution (~5km)
-  what = "centers"
-) %>%
-  st_sf() %>%
-  st_transform(crs = st_crs(soil_clean)) # match CRS
-
-# 2. Krige over grid points
-soil_slope <- soil_clean %>% 
-  filter(!is.na(slope1)) %>%
-  st_transform(st_crs(grid)) %>%
-  st_centroid(of_largest_polygon = TRUE)
-
-soil_sp <- as(soil_slope, "Spatial")
-grid_sp <- as(grid, "Spatial")
-
-v_slope <- variogram(slope1 ~ 1, data = soil_sp)
-model_slope <- fit.variogram(v_slope, model = vgm(psill = 1, model = "Exp", range = 100000, nugget = 0.1))
-
-kriged_grid <- krige(
-  slope1 ~ 1,
-  soil_sp,
-  newdata = grid_sp,
-  model = model_slope,
-  nmax = 30
-)
-
-kriged_grid_sf <- st_as_sf(kriged_grid)
-st_crs(kriged_grid_sf) <- st_crs(corn_data_sf)
-
+# # Assume `corn_data_sf` contains your full polygon regions
+# # Assume `soil_clean` is your soil point data with slope1 values
+# 
+# # 1. Create regular grid for kriging over Ontario extent
+# grid <- st_make_grid(
+#   corn_data_sf,
+#   cellsize = 5000, # adjust for resolution (~5km)
+#   what = "centers"
+# ) %>%
+#   st_sf() %>%
+#   st_transform(crs = st_crs(soil_clean)) # match CRS
+# 
+# # 2. Krige over grid points
+# soil_slope <- soil_clean %>% 
+#   filter(!is.na(slope1)) %>%
+#   st_transform(st_crs(grid)) %>%
+#   st_centroid(of_largest_polygon = TRUE)
+# 
+# soil_sp <- as(soil_slope, "Spatial")
+# grid_sp <- as(grid, "Spatial")
+# 
+# v_slope <- variogram(slope1 ~ 1, data = soil_sp)
+# model_slope <- fit.variogram(v_slope, model = vgm(psill = 1, model = "Exp", range = 100000, nugget = 0.1))
+# 
+# kriged_grid <- krige(
+#   slope1 ~ 1,
+#   soil_sp,
+#   newdata = grid_sp,
+#   model = model_slope,
+#   nmax = 30
+# )
+# 
+# kriged_grid_sf <- st_as_sf(kriged_grid)
+# st_crs(kriged_grid_sf) <- st_crs(corn_data_sf)
+# 
+# 
+# ```
+# 
+# ```{r}
+# # 1. Join kriged points to corn polygons (each point gets matched to its region)
+# joined <- st_join(kriged_grid_sf, corn_data_sf, join = st_within, left = FALSE)
+# 
+# # 2. Calculate average slope1 per region (grouped by the polygon's unique ID)
+# # Replace 'region_id' below with the unique identifier column in corn_data_sf
+# slope_summary <- joined %>%
+#   group_by(county, year) %>%
+#   summarise(slope1_avg = mean(var1.pred, na.rm = TRUE))
+# 
+# # 3. Join the slope averages back to the full corn region dataset
+# corn_data_sf <- corn_data_sf %>%
+#   st_join(slope_summary, by = c("county", "year"))
+# 
+# corn_data_sf <- corn_data_sf %>%
+#   distinct(county, year, .keep_all = TRUE)
+# 
+# # Choose any year (e.g., 2004)
+# corn_2004 <- corn_data_sf %>% filter(year.x == 2004)
+# 
+# krig_slope <- ggplot(corn_2004) +
+#   geom_sf(aes(fill = slope1_avg), color = "grey40") +
+#   scale_fill_viridis_c(name = "Avg Slope1", na.value = "white") +
+#   labs(
+#     title = "Average Kriged Slope1 by Corn Region (2004)",
+#     subtitle = "Static soil conditions interpolated from point data",
+#     fill = "Slope1"
+#   ) +
+#   theme_minimal()
+# 
+# ```
+# 
+# K Factor- estimate of soil erosion risk
+# ```{r}
+# # Filter and centroid
+# soil_k <- soil_clean %>%
+#   dplyr::filter(!is.na(k_factor1)) %>%
+#   st_transform(st_crs(grid)) %>%
+#   st_centroid(of_largest_polygon = TRUE)
+# 
+# # Kriging setup
+# soil_sp <- as(soil_k, "Spatial")
+# v_k <- variogram(k_factor1 ~ 1, soil_sp)
+# model_k <- fit.variogram(v_k, model = vgm(1, "Exp", 100000, 0.1))
+# 
+# # Perform kriging
+# kriged_k <- krige(k_factor1 ~ 1, soil_sp, newdata = grid_sp, model = model_k, nmax = 30)
+# kriged_k_sf <- st_as_sf(kriged_k) %>%
+#   st_set_crs(st_crs(corn_data_sf))
+# 
+# # Join to corn polygons
+# joined_k <- st_join(kriged_k_sf, corn_data_sf, join = st_within, left = FALSE)
+# 
+# kfactor_summary <- joined_k %>%
+#   group_by(county.x, year.x) %>%
+#   summarise(kfactor_avg = mean(var1.pred, na.rm = TRUE))
+# 
+# # 3. Join the slope averages back to the full corn region dataset
+# corn_data_sf <- corn_data_sf %>%
+#   st_join(kfactor_summary, by = c("county", "year"))
+# 
+# corn_data_sf <- corn_data_sf %>%
+#   distinct(county, year, .keep_all = TRUE)
+# 
+# # Choose any year (e.g., 2004)
+# kfactor_2004 <- corn_data_sf %>%
+#   dplyr::filter(year.x.x == 2004)
+# 
+# krig_kfactor <- ggplot(kfactor_2004) +
+#   geom_sf(aes(fill = kfactor_avg), color = "grey40") +
+#   scale_fill_viridis_c(name = "K Factor", na.value = "white") +
+#   labs(
+#     title = "Average Kriged K Factor by Corn Region (2004)",
+#     subtitle = "Erodibility Factor from Soil Data",
+#     fill = "K Factor"
+#   ) +
+#   theme_minimal()
+# 
+# krig_kfactor
+# 
+# ```
+# There are wide range of soil textures and types. Since the data is characters, for each region, we will use the mode soil texture for each region.
+# 
+# ```{r, include=FALSE, echo=FALSE}
+# #cleaning the extra columns from the merge
+# corn_data_sf <- corn_data_sf %>%
+#   rename(
+#     year = year.x.x,
+#     county = county.x.x
+#   )
+# 
+# corn_data_sf <- corn_data_sf %>%
+#   dplyr::select(-year.y, -year.x.y, -county.y, -county.x.y)
+# 
+# corn_data_sf <- corn_data_sf %>%
+#   distinct(county, year, .keep_all = TRUE)
+# 
+# head(corn_data_sf)
 
 ```
 
 ```{r}
-# 1. Join kriged points to corn polygons (each point gets matched to its region)
-joined <- st_join(kriged_grid_sf, corn_data_sf, join = st_within, left = FALSE)
+krige_variable <- function(var_name, new_col_name, grid_sp) {
+  # 1. Prep soil points
+  soil_var <- soil_clean %>%
+    filter(!is.na(.data[[var_name]])) %>%
+    st_transform(st_crs(corn_data_sf)) %>%
+    st_centroid(of_largest_polygon = TRUE)
 
-# 2. Calculate average slope1 per region (grouped by the polygon's unique ID)
-# Replace 'region_id' below with the unique identifier column in corn_data_sf
-slope_summary <- joined %>%
-  group_by(county, year) %>%
-  summarise(slope1_avg = mean(var1.pred, na.rm = TRUE))
+  soil_sp <- as(soil_var, "Spatial")
 
-# 3. Join the slope averages back to the full corn region dataset
+  # 2. Variogram + model
+  v <- variogram(as.formula(paste0(var_name, " ~ 1")), data = soil_sp)
+  model <- fit.variogram(v, model = vgm(1, "Exp", 100000, 0.1))
+
+  # 3. Kriging
+  kriged <- krige(
+    as.formula(paste0(var_name, " ~ 1")),
+    soil_sp,
+    newdata = grid_sp,
+    model = model,
+    nmax = 30
+  )
+
+  kriged_sf <- st_as_sf(kriged) %>%
+    st_set_crs(st_crs(corn_data_sf))
+
+  # 4. Spatial join to crop regions
+  joined <- st_join(kriged_sf, corn_data_sf, join = st_within, left = FALSE)
+
+  # 5. Average by region
+  summary <- joined %>%
+    st_drop_geometry() %>%
+    group_by(county, year) %>%
+    summarise(!!new_col_name := mean(var1.pred, na.rm = TRUE), .groups = "drop")
+
+  return(summary)
+}
+
+```
+
+```{r}
+grid <- st_make_grid(corn_data_sf, cellsize = 5000, what = "centers") %>%
+  st_sf() %>%
+  st_transform(st_crs(corn_data_sf))
+
+grid_sp <- as(grid, "Spatial")  # this is the missing part!
+
+```
+
+
+```{r}
+
+slope_summary <- krige_variable("slope1", "slope1_avg", grid_sp)
+kfactor_summary <- krige_variable("k_factor1", "kfactor_avg", grid_sp)
+
+```
+
+```{r}
+# Merge slope and kfactor summaries
 corn_data_sf <- corn_data_sf %>%
-  st_join(slope_summary, by = c("county", "year"))
+  left_join(slope_summary, by = c("county", "year")) %>%
+  left_join(kfactor_summary, by = c("county", "year")) %>%
+  distinct(county, year, .keep_all = TRUE)  # clean duplicates
+```
 
-# Choose any year (e.g., 2004)
-corn_2004 <- corn_data_sf %>% filter(year.x == 2004)
+```{r}
+#plot results of the kriging 
+corn_check <- corn_data_sf %>%
+  filter(year == 2004)  # or any year you want to explore
 
-krig_slope <- ggplot(corn_2004) +
+corn_slope <- ggplot(corn_check) +
   geom_sf(aes(fill = slope1_avg), color = "grey40") +
-  scale_fill_viridis_c(name = "Avg Slope1", na.value = "white") +
+  scale_fill_viridis_c(name = "Slope", na.value = "white") +
   labs(
-    title = "Average Kriged Slope1 by Corn Region (2004)",
-    subtitle = "Static soil conditions interpolated from point data",
-    fill = "Slope1"
+    title = "Kriged Slope by Corn Region (2004)",
+    subtitle = "Interpolated from Soil Point Data",
+    fill = "Slope"
   ) +
   theme_minimal()
 
-```
-
-K Factor- estimate of soil erosion risk
-```{r}
-# Filter and centroid
-soil_k <- soil_clean %>%
-  dplyr::filter(!is.na(k_factor1)) %>%
-  st_transform(st_crs(grid)) %>%
-  st_centroid(of_largest_polygon = TRUE)
-
-# Kriging setup
-soil_sp <- as(soil_k, "Spatial")
-v_k <- variogram(k_factor1 ~ 1, soil_sp)
-model_k <- fit.variogram(v_k, model = vgm(1, "Exp", 100000, 0.1))
-
-# Perform kriging
-kriged_k <- krige(k_factor1 ~ 1, soil_sp, newdata = grid_sp, model = model_k, nmax = 30)
-kriged_k_sf <- st_as_sf(kriged_k) %>%
-  st_set_crs(st_crs(corn_data_sf))
-
-# Join to corn polygons
-joined_k <- st_join(kriged_k_sf, corn_data_sf, join = st_within, left = FALSE)
-
-# Compute regional averages
-k_summary <- joined_k %>%
-  group_by(county.x, year.x) %>%
-  summarise(kfactor_avg = mean(var1.pred, na.rm = TRUE))
-
-# Join back and plot 2004
-corn_k <- corn_data_sf %>%
-  st_join(k_summary, by = c("county.x", "year.x")) %>%
-  filter(year == 2004)
-
-krig_kfactor <- ggplot(corn_k) +
+corn_kfactor <- ggplot(corn_check) +
   geom_sf(aes(fill = kfactor_avg), color = "grey40") +
   scale_fill_viridis_c(name = "K Factor", na.value = "white") +
   labs(
-    title = "Average Kriged K Factor by Corn Region (2004)",
-    subtitle = "Erodibility Factor from Soil Data",
+    title = "Kriged K Factor by Corn Region (2004)",
+    subtitle = "Interpolated from Soil Point Data",
     fill = "K Factor"
+  ) +
+  theme_minimal()
+
+corn_slope | corn_kfactor
+```
+
+```{r}
+#grouping the soil textures into more general categories
+soil_clean <- soil_clean %>%
+  mutate(
+    texture_group = case_when(
+      atexture1 %in% c("CL", "SCL", "SICL") ~ "Clay Loam",
+      atexture1 %in% c("SL", "FSL", "GSL", "GL", "GLS", "VFSL", "LVFS") ~ "Sandy Loam",
+      atexture1 %in% c("L", "SIL", "VAR") ~ "Loam",
+      atexture1 %in% c("C", "SIC") ~ "Clay",
+      atexture1 %in% c("S", "FS", "VFS", "LS", "LFS", "CSL", "LCS") ~ "Sand",
+      atexture1 %in% c("ORG") ~ "Organic",
+      TRUE ~ "Other"
+    )
+  )
+
+# Transform and spatial join to corn polygons
+texture_summary <- soil_clean %>%
+  filter(!is.na(texture_group)) %>%
+  st_transform(st_crs(corn_data_sf)) %>%
+  st_join(corn_data_sf, join = st_within) %>%
+  group_by(county, year) %>%
+  summarise(most_common_texture = names(sort(table(texture_group), decreasing = TRUE)[1]))
+
+corn_texture <- corn_data_sf %>%
+  left_join(texture_summary, by = c("county", "year"))
+
+
+texture_plot <- ggplot(corn_data_sf %>% filter(year == 2004)) +
+  geom_sf(aes(fill = most_common_texture), color = "grey40") +
+  scale_fill_viridis_d(name = "Soil Texture", na.value = "white") +
+  labs(
+    title = "Most Common Soil Texture by Corn Region (2004)",
+    subtitle = "Joined from Point Data Without Filtering First",
+    fill = "Texture"
   ) +
   theme_minimal()
 
@@ -695,6 +856,7 @@ krig_kfactor <- ggplot(corn_k) +
 
 ```{r, echo=FALSE}
 head(soil_clean)
+unique(soil_clean$atexture1)
 ```
 
 ## Corn Yield
