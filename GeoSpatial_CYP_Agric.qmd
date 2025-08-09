@@ -643,145 +643,6 @@ ontario_cd_sf <- get_census(
 )
 ```
 Getting the average slope for the areas
-```{r}
-# # Assume `corn_data_sf` contains your full polygon regions
-# # Assume `soil_clean` is your soil point data with slope1 values
-# 
-# # 1. Create regular grid for kriging over Ontario extent
-# grid <- st_make_grid(
-#   corn_data_sf,
-#   cellsize = 5000, # adjust for resolution (~5km)
-#   what = "centers"
-# ) %>%
-#   st_sf() %>%
-#   st_transform(crs = st_crs(soil_clean)) # match CRS
-# 
-# # 2. Krige over grid points
-# soil_slope <- soil_clean %>% 
-#   filter(!is.na(slope1)) %>%
-#   st_transform(st_crs(grid)) %>%
-#   st_centroid(of_largest_polygon = TRUE)
-# 
-# soil_sp <- as(soil_slope, "Spatial")
-# grid_sp <- as(grid, "Spatial")
-# 
-# v_slope <- variogram(slope1 ~ 1, data = soil_sp)
-# model_slope <- fit.variogram(v_slope, model = vgm(psill = 1, model = "Exp", range = 100000, nugget = 0.1))
-# 
-# kriged_grid <- krige(
-#   slope1 ~ 1,
-#   soil_sp,
-#   newdata = grid_sp,
-#   model = model_slope,
-#   nmax = 30
-# )
-# 
-# kriged_grid_sf <- st_as_sf(kriged_grid)
-# st_crs(kriged_grid_sf) <- st_crs(corn_data_sf)
-# 
-# 
-# ```
-# 
-# ```{r}
-# # 1. Join kriged points to corn polygons (each point gets matched to its region)
-# joined <- st_join(kriged_grid_sf, corn_data_sf, join = st_within, left = FALSE)
-# 
-# # 2. Calculate average slope1 per region (grouped by the polygon's unique ID)
-# # Replace 'region_id' below with the unique identifier column in corn_data_sf
-# slope_summary <- joined %>%
-#   group_by(county, year) %>%
-#   summarise(slope1_avg = mean(var1.pred, na.rm = TRUE))
-# 
-# # 3. Join the slope averages back to the full corn region dataset
-# corn_data_sf <- corn_data_sf %>%
-#   st_join(slope_summary, by = c("county", "year"))
-# 
-# corn_data_sf <- corn_data_sf %>%
-#   distinct(county, year, .keep_all = TRUE)
-# 
-# # Choose any year (e.g., 2004)
-# corn_2004 <- corn_data_sf %>% filter(year.x == 2004)
-# 
-# krig_slope <- ggplot(corn_2004) +
-#   geom_sf(aes(fill = slope1_avg), color = "grey40") +
-#   scale_fill_viridis_c(name = "Avg Slope1", na.value = "white") +
-#   labs(
-#     title = "Average Kriged Slope1 by Corn Region (2004)",
-#     subtitle = "Static soil conditions interpolated from point data",
-#     fill = "Slope1"
-#   ) +
-#   theme_minimal()
-# 
-# ```
-# 
-# K Factor- estimate of soil erosion risk
-# ```{r}
-# # Filter and centroid
-# soil_k <- soil_clean %>%
-#   dplyr::filter(!is.na(k_factor1)) %>%
-#   st_transform(st_crs(grid)) %>%
-#   st_centroid(of_largest_polygon = TRUE)
-# 
-# # Kriging setup
-# soil_sp <- as(soil_k, "Spatial")
-# v_k <- variogram(k_factor1 ~ 1, soil_sp)
-# model_k <- fit.variogram(v_k, model = vgm(1, "Exp", 100000, 0.1))
-# 
-# # Perform kriging
-# kriged_k <- krige(k_factor1 ~ 1, soil_sp, newdata = grid_sp, model = model_k, nmax = 30)
-# kriged_k_sf <- st_as_sf(kriged_k) %>%
-#   st_set_crs(st_crs(corn_data_sf))
-# 
-# # Join to corn polygons
-# joined_k <- st_join(kriged_k_sf, corn_data_sf, join = st_within, left = FALSE)
-# 
-# kfactor_summary <- joined_k %>%
-#   group_by(county.x, year.x) %>%
-#   summarise(kfactor_avg = mean(var1.pred, na.rm = TRUE))
-# 
-# # 3. Join the slope averages back to the full corn region dataset
-# corn_data_sf <- corn_data_sf %>%
-#   st_join(kfactor_summary, by = c("county", "year"))
-# 
-# corn_data_sf <- corn_data_sf %>%
-#   distinct(county, year, .keep_all = TRUE)
-# 
-# # Choose any year (e.g., 2004)
-# kfactor_2004 <- corn_data_sf %>%
-#   dplyr::filter(year.x.x == 2004)
-# 
-# krig_kfactor <- ggplot(kfactor_2004) +
-#   geom_sf(aes(fill = kfactor_avg), color = "grey40") +
-#   scale_fill_viridis_c(name = "K Factor", na.value = "white") +
-#   labs(
-#     title = "Average Kriged K Factor by Corn Region (2004)",
-#     subtitle = "Erodibility Factor from Soil Data",
-#     fill = "K Factor"
-#   ) +
-#   theme_minimal()
-# 
-# krig_kfactor
-# 
-# ```
-# There are wide range of soil textures and types. Since the data is characters, for each region, we will use the mode soil texture for each region.
-# 
-# ```{r, include=FALSE, echo=FALSE}
-# #cleaning the extra columns from the merge
-# corn_data_sf <- corn_data_sf %>%
-#   rename(
-#     year = year.x.x,
-#     county = county.x.x
-#   )
-# 
-# corn_data_sf <- corn_data_sf %>%
-#   dplyr::select(-year.y, -year.x.y, -county.y, -county.x.y)
-# 
-# corn_data_sf <- corn_data_sf %>%
-#   distinct(county, year, .keep_all = TRUE)
-# 
-# head(corn_data_sf)
-
-```
 
 ```{r}
 krige_variable <- function(var_name, new_col_name, grid_sp) {
@@ -834,7 +695,7 @@ grid_sp <- as(grid, "Spatial")  # this is the missing part!
 
 
 ```{r}
-
+#kirging using function
 slope_summary <- krige_variable("slope1", "slope1_avg", grid_sp)
 kfactor_summary <- krige_variable("k_factor1", "kfactor_avg", grid_sp)
 
@@ -877,6 +738,7 @@ corn_slope | corn_kfactor
 ```
 
 ```{r}
+#will figure this out later
 #grouping the soil textures into more general categories
 soil_clean <- soil_clean %>%
   mutate(
@@ -891,33 +753,60 @@ soil_clean <- soil_clean %>%
     )
   )
 
-# Transform and spatial join to corn polygons
-texture_summary <- soil_clean %>%
-  filter(!is.na(texture_group)) %>%
+soil_clean <- soil_clean %>%
+  mutate(drainage_group = case_when(
+    drainage1 %in% c("W", "WA") ~ "Well Drained",
+    drainage1 %in% c("MW") ~ "Moderately Well",
+    drainage1 %in% c("P", "VP") ~ "Poorly Drained",
+    drainage1 %in% c("VR", "VA", "R") ~ "Very Poor",
+    drainage1 %in% c("I") ~ "Imperfect",
+    TRUE ~ NA_character_
+  ))
+
+soil_cats <- soil_clean %>%
+  filter(!is.na(texture_group) & !is.na(drainage_group)) %>%
   st_transform(st_crs(corn_data_sf)) %>%
-  st_join(corn_data_sf, join = st_within) %>%
+  st_join(corn_data_sf, join = st_within, left = FALSE)
+
+# Texture mode
+texture_summary <- soil_cats %>%
   group_by(county, year) %>%
-  summarise(most_common_texture = names(sort(table(texture_group), decreasing = TRUE)[1]))
+  summarise(texture_mode = names(sort(table(texture_group), decreasing = TRUE)[1]), .groups = "drop")
 
-corn_texture <- corn_data_sf %>%
-  left_join(texture_summary, by = c("county", "year"))
+# Drainage mode
+drainage_summary <- soil_cats %>%
+  group_by(county, year) %>%
+  summarise(drainage_mode = names(sort(table(drainage_group), decreasing = TRUE)[1]), .groups = "drop")
 
+corn_data_sf <- corn_data_sf %>%
+  left_join(texture_summary, by = c("county", "year")) %>%
+  left_join(drainage_summary, by = c("county", "year")) %>%
+  distinct(county, year, .keep_all = TRUE)
 
-texture_plot <- ggplot(corn_data_sf %>% filter(year == 2004)) +
-  geom_sf(aes(fill = most_common_texture), color = "grey40") +
-  scale_fill_viridis_d(name = "Soil Texture", na.value = "white") +
-  labs(
-    title = "Most Common Soil Texture by Corn Region (2004)",
-    subtitle = "Joined from Point Data Without Filtering First",
-    fill = "Texture"
-  ) +
+#plot to check
+corn_texture <- ggplot(corn_data_sf %>% filter(year == 2004)) +
+  geom_sf(aes(fill = texture_mode), color = "grey40") +
+  scale_fill_viridis_d(name = "Texture") +
+  labs(title = "Most Common Soil Texture by Region (2004)") +
   theme_minimal()
 
+corn_drain <- ggplot(corn_data_sf %>% filter(year == 2004)) +
+  geom_sf(aes(fill = drainage_mode), color = "grey40") +
+  scale_fill_viridis_d(name = "Texture") +
+  labs(title = "Most Common Soil Texture by Region (2004)") +
+  theme_minimal()
+
+
+```
+
+```{r}
+(corn_slope | corn_kfactor) / (corn_texture | corn_drain)
 ```
 
 ```{r, echo=FALSE}
 head(soil_clean)
 unique(soil_clean$atexture1)
+unique(soil_clean$drainage1)
 ```
 
 ## Corn Yield
@@ -929,11 +818,24 @@ weather_corn_gs <- weather %>%
   filter(month %in% 5:10)
 
 head(weather_corn_gs)
+colSums(is.na(weather_corn_gs))
 ```
-
 ```{r}
-glimpse(corn_data_sf)
-head(soil)
+# Step 1: Identify rows with missing total_precip
+weather_na <- weather_corn_gs %>% filter(is.na(total_precip))
+
+# Step 2: Identify complete rows (non-NA total_precip)
+weather_complete <- weather_corn_gs %>% filter(!is.na(total_precip))
+
+# Step 3: Find nearest neighbor for each NA entry
+nearest_idx <- st_nearest_feature(weather_na, weather_complete)
+
+# Step 4: Fill NA values from nearest station's total_precip
+weather_corn_gs$total_precip[is.na(weather_corn_gs$total_precip)] <- 
+  weather_complete$total_precip[nearest_idx]
+
+sum(is.na(weather_corn_gs$total_precip))
+
 ```
 
 #### 2024 Forecast for Corn
@@ -945,10 +847,9 @@ corn_regions <- dplyr::select(corn_data_sf, county, geom)
 
 weather_with_county <- st_join(weather_corn_gs, corn_regions, join = st_nearest_feature)
 
-head(weather_with_county)
 
-#grouping the weather for each county
-weather_avg <- weather_with_county %>%
+# Step 1: Fill in all county-year-month combinations (May–October)
+weather_avg_complete <- weather_with_county %>%
   st_drop_geometry() %>%
   group_by(county, year, month) %>%
   summarise(
@@ -956,12 +857,17 @@ weather_avg <- weather_with_county %>%
     total_precip = mean(total_precip, na.rm = TRUE),
     max_humidity = mean(max_humidity, na.rm = TRUE),
     .groups = "drop"
-  )
+  ) %>%
+  complete(county, year, month = 5:10)  # Ensures full seasonal structure
 
-head(weather_avg)
+# Step 2: Fill in missing weather values within each county and month
+weather_avg_filled <- weather_avg_complete %>%
+  group_by(county, month) %>%
+  fill(mean_temp, total_precip, max_humidity, .direction = "downup") %>%
+  ungroup()
 
-#reshaping for one weather per month
-weather_wide <- weather_avg %>%
+# Step 3: Reshape to wide format (one row per county-year)
+weather_wide <- weather_avg_filled %>%
   pivot_wider(
     names_from = month,
     values_from = c(mean_temp, total_precip, max_humidity),
@@ -971,36 +877,34 @@ weather_wide <- weather_avg %>%
 ```
 
 ```{r, echo=FALSE}
-#integrating the soil information
-soil_joined <- st_join(corn_data_sf, soil_clean, join = st_intersects)
+# #integrating the soil information
+# soil_joined <- st_join(corn_data_sf, soil_clean, join = st_intersects)
+# 
+# soil_info <- soil_joined %>%
+#   sf::st_drop_geometry() %>%
+#   dplyr::select(county, year, slope1, k_factor1, atexture1, drainage1) %>%
+#   distinct()
 
-soil_info <- soil_joined %>%
-  sf::st_drop_geometry() %>%
-  dplyr::select(county, year, slope1, k_factor1, atexture1, drainage1) %>%
-  distinct()
+head(corn_data_sf)
+head(weather_wide)
+
+colSums(is.na(weather_with_county))
+
+colSums(is.na(weather_wide))
 ```
 
 ```{r, echo=FALSE}
-#combining weather and yield information 
-
-#dropping the geometry for now
+# Drop geometry and keep basic yield data
 corn_yield <- corn_data_sf %>%
   sf::st_drop_geometry() %>%
   dplyr::mutate(yield = as.numeric(yield_bushels_ac)) %>%
-  dplyr::select(county, year, yield)
+  dplyr::select(county, year, yield, slope1_avg, kfactor_avg)
 
+# Join in weather (assuming corn_yield already has soil info)
 full_corn_data <- corn_yield %>%
   left_join(weather_wide, by = c("county", "year"))
 
-full_corn_data <- full_corn_data %>%
-  left_join(soil_info, by = c("county", "year"))
-
-full_corn_data<- full_corn_data %>% 
-  dplyr::mutate(
-    atexture1 = factor(atexture1),
-    drainage1 = factor(drainage1)
-  )
-
+# Preview
 head(full_corn_data)
 
 ```
@@ -1025,17 +929,60 @@ corn_test <- full_corn_data %>% filter(year == 2024)
 ```
 
 ```{r}
+# Identify counties with missing weather for 2024
+missing_weather_2024 <- full_corn_data %>%
+  filter(year == 2024 & (is.na(mean_temp_m5) | is.na(total_precip_m5))) %>%
+  dplyr::select(county)
+
+# Create sf objects for missing and available counties
+missing_sf <- corn_data_sf %>%
+  filter(year == 2024, county %in% missing_weather_2024$county)
+
+available_sf <- corn_data_sf %>%
+  filter(year == 2024, !county %in% missing_weather_2024$county)
+
+# Get available weather variables
+available_weather <- full_corn_data %>%
+  filter(year == 2024, !county %in% missing_weather_2024$county) %>%
+  dplyr::select(county, starts_with("mean_temp"), starts_with("total_precip"))
+
+# Find nearest available county
+nearest_idx <- sf::st_nearest_feature(missing_sf, available_sf)
+
+# Get matched weather
+imputed_weather <- available_weather[nearest_idx, ] %>%
+  dplyr::select(starts_with("mean_temp"), starts_with("total_precip"))
+
+# Rebuild missing counties with imputed weather
+missing_filled <- full_corn_data %>%
+  filter(year == 2024 & county %in% missing_weather_2024$county) %>%
+  dplyr::select(-starts_with("mean_temp"), -starts_with("total_precip")) %>%
+  bind_cols(imputed_weather)
+
+# Keep only non-NA rows
+full_corn_data <- full_corn_data %>%
+  filter(!(year == 2024 & county %in% missing_weather_2024$county))
+
+# Add back imputed rows
+full_corn_data <- bind_rows(full_corn_data, missing_filled)
+```
+
+```{r}
 corn_model_ar1_full <- lm(
   yield ~ yield_lag1 +
     mean_temp_m5 + mean_temp_m6 + mean_temp_m7 + mean_temp_m8 + mean_temp_m9 + mean_temp_m10 +
     total_precip_m5 + total_precip_m6 + total_precip_m7 + total_precip_m8 + total_precip_m9 + total_precip_m10 +
-    slope1 + k_factor1 + drainage1 + atexture1,
+    slope1_avg + kfactor_avg,
   data = corn_train
 )
 ```
 
 ```{r}
 corn_test$yield_pred_ar1 <- predict(corn_model_ar1_full, newdata = corn_test)
+
+corn_test %>%
+  filter(is.na(full_corn_data)) %>%
+  dplyr::select(county, year, yield_lag1, mean_temp_m5, total_precip_m5)
 ```
 
 #### Random Walk 1
@@ -1045,25 +992,18 @@ corn_test$yield_pred_ar1 <- predict(corn_model_ar1_full, newdata = corn_test)
 full_corn_data <- full_corn_data %>%
   arrange(county, year) %>%
   group_by(county) %>%
-  mutate(yield_rw1 = lag(yield, n = 1)) %>%  # 2023 yield for 2024 prediction
+  mutate(yield_rw1 = lag(yield, n = 1)) %>%
   ungroup()
 
 corn_rw1_2024 <- full_corn_data %>%
-  filter(year == 2024, !is.na(yield_rw1))
-
-coern_rw1_model <- lm(
-  yield ~ yield_rw1 + mean_temp_m5 + mean_temp_m6 + mean_temp_m7 + mean_temp_m8 + mean_temp_m9 +
-           total_precip_m5 + total_precip_m6 + total_precip_m7 + total_precip_m8 + total_precip_m9 +
-           slope1 + k_factor1 + atexture1 + drainage1,
-  data = corn_rw1_2024
-)
-
+  filter(year == 2024, !is.na(yield_rw1)) %>%
+  mutate(yield_pred_rw1 = yield_rw1)
 ```
 
 ```{r}
-#2024 forecast
-corn_rw1_2024 <- corn_rw1_2024 %>%
-  mutate(yield_pred_rw1_adjusted = predict(rw1_model, newdata = rw1_2024))
+# #2024 forecast
+# corn_rw1_2024 <- corn_rw1_2024 %>%
+#   mutate(yield_pred_rw1_adjusted = predict(rw1_model, newdata = rw1_2024))
 ```
 
 #### Random Walk 2
@@ -1071,27 +1011,25 @@ corn_rw1_2024 <- corn_rw1_2024 %>%
 full_corn_data <- full_corn_data %>%
   arrange(county, year) %>%
   group_by(county) %>%
-  mutate(
-    yield_rw2 = 2 * lag(yield, n = 1) - lag(yield, n = 2)
-  ) %>%
+  mutate(yield_rw2 = 2 * lag(yield, 1) - lag(yield, 2)) %>%
   ungroup()
 
+
 corn_rw2_2024 <- full_corn_data %>%
-  filter(year == 2024, !is.na(yield_rw2))
-
-corn_rw2_model <- lm(
-  yield ~ yield_rw2 + mean_temp_m5 + mean_temp_m6 + mean_temp_m7 + mean_temp_m8 + mean_temp_m9 +
-           total_precip_m5 + total_precip_m6 + total_precip_m7 + total_precip_m8 + total_precip_m9 +
-           slope1 + k_factor1 + atexture1 + drainage1,
-  data =corn_rw2_2024
-)
-
+  filter(year == 2024, !is.na(yield_rw2)) %>%
+  mutate(yield_pred_rw2 = yield_rw2)
 ```
 
 ```{r}
-#2024 forecast
-corn_rw2_2024 <- corn_rw2_2024 %>%
-  mutate(yield_pred_rw2_adjusted = predict(corn_rw2_model, newdata = corn_rw2_2024))
+# #2024 forecast
+# corn_rw2_2024 <- corn_rw2_2024 %>%
+#   mutate(yield_pred_rw2_adjusted = predict(corn_rw2_model, newdata = corn_rw2_2024))
+
+# Check if predictions exist
+summary(corn_test$yield_pred_ar1)          # For AR1
+summary(corn_rw1_2024$yield_pred_rw1)  # For RW1
+summary(corn_rw2_2024$yield_pred_rw2)  # For RW2
+
 
 ```
 
@@ -1449,6 +1387,76 @@ wheat_rw2_2024 <- wheat_rw2_2024 %>%
 #### Model Evaluations
 
 ```{r}
+library(dplyr)
+library(Metrics)
+
+# Combine actuals and predictions
+corn_2024_predictions <- corn_data_sf %>%
+  filter(year == 2024) %>%
+  dplyr::select(County = county, Actual_Yield_2024 = yield_bushels_ac) %>%
+  mutate(Actual_Yield_2024 = as.numeric(Actual_Yield_2024)) %>%
+  left_join(dplyr::select(corn_test, County = county, Pred_AR1 = yield_pred_ar1), by = "County") %>%
+  left_join(dplyr::select(corn_rw1_2024, County = county, Pred_RW1 = yield_pred_rw1), by = "County") %>%
+  left_join(dplyr::select(corn_rw2_2024, County = county, Pred_RW2 = yield_pred_rw2), by = "County") %>%
+  mutate(
+    Resid_AR1 = Pred_AR1 - Actual_Yield_2024,
+    Resid_RW1 = Pred_RW1 - Actual_Yield_2024,
+    Resid_RW2 = Pred_RW2 - Actual_Yield_2024
+  )
+
+# Compute overall RMSE for each model
+rmse_ar1 <- rmse(corn_2024_predictions$Actual_Yield_2024, corn_2024_predictions$Pred_AR1)
+rmse_rw1 <- rmse(corn_2024_predictions$Actual_Yield_2024, corn_2024_predictions$Pred_RW1)
+rmse_rw2 <- rmse(corn_2024_predictions$Actual_Yield_2024, corn_2024_predictions$Pred_RW2)
+
+# Create final RMSE row
+rmse_row <- tibble(
+  County = "Overall RMSE",
+  Actual_Yield_2024 = NA,
+  Pred_AR1 = NA,
+  Pred_RW1 = NA,
+  Pred_RW2 = NA,
+  Resid_AR1 = rmse_ar1,
+  Resid_RW1 = rmse_rw1,
+  Resid_RW2 = rmse_rw2
+)
+
+# Bind to table
+final_table <- bind_rows(corn_2024_predictions, rmse_row)
+
+# View
+print(final_table)
+
+
+```
+```{r}
+total_comparison <- corn_2024_predictions %>%
+  summarise(
+    Total_Actual = sum(Actual_Yield_2024, na.rm = TRUE),
+    Total_Pred_AR1 = sum(Pred_AR1, na.rm = TRUE),
+    Total_Pred_RW1 = sum(Pred_RW1, na.rm = TRUE),
+    Total_Pred_RW2 = sum(Pred_RW2, na.rm = TRUE)
+  ) %>%
+  mutate(
+    Error_AR1 = abs(Total_Pred_AR1 - Total_Actual),
+    Error_RW1 = abs(Total_Pred_RW1 - Total_Actual),
+    Error_RW2 = abs(Total_Pred_RW2 - Total_Actual)
+  )
+
+mean_comparison <- corn_2024_predictions %>%
+  summarise(
+    Mean_Actual = mean(Actual_Yield_2024, na.rm = TRUE),
+    Mean_Pred_AR1 = mean(Pred_AR1, na.rm = TRUE),
+    Mean_Pred_RW1 = mean(Pred_RW1, na.rm = TRUE),
+    Mean_Pred_RW2 = mean(Pred_RW2, na.rm = TRUE)
+  ) %>%
+  mutate(
+    Error_AR1 = abs(Mean_Pred_AR1 - Mean_Actual),
+    Error_RW1 = abs(Mean_Pred_RW1 - Mean_Actual),
+    Error_RW2 = abs(Mean_Pred_RW2 - Mean_Actual)
+  )
+
+
 ```
 ##### For Corn
 ```{r}
@@ -1469,7 +1477,145 @@ real_corn_2024 <- ggplot(data = corn_2024_sf) +
   ) +
   theme_minimal()
 
-real_corn_2024
+<<<<<<< HEAD
+# Merge predictions into corn_2024_sf
+corn_2024_sf <- corn_2024_sf %>%
+  left_join(
+    dplyr::select(corn_test, county, yield_pred_ar1),
+    by = "county"
+  ) %>%
+  left_join(
+    dplyr::select(corn_rw1_2024, county, yield_pred_rw1),
+    by = "county"
+  ) %>%
+  left_join(
+    dplyr::select(corn_rw2_2024, county, yield_pred_rw2),
+    by = "county"
+  )
+
+# AR1 Prediction Map
+corn_ar1_map <- ggplot(corn_2024_sf) +
+  geom_sf(aes(fill = yield_pred_ar1), color = "gray30") +
+  scale_fill_viridis_c(option = "D") +
+  labs(title = "Predicted Yield (AR1)", fill = "Yield (bu/ac)") +
+  theme_minimal()
+
+# RW1 Prediction Map
+corn_rw1_map <- ggplot(corn_2024_sf) +
+  geom_sf(aes(fill = yield_pred_rw1), color = "gray30") +
+  scale_fill_viridis_c(option = "D") +
+  labs(title = "Predicted Yield (RW1)", fill = "Yield (bu/ac)") +
+  theme_minimal()
+
+# RW2 Prediction Map
+corn_rw2_map <- ggplot(corn_2024_sf) +
+  geom_sf(aes(fill = yield_pred_rw2), color = "gray30") +
+  scale_fill_viridis_c(option = "D") +
+  labs(title = "Predicted Yield (RW2)", fill = "Yield (bu/ac)") +
+  theme_minimal()
+
+
+(real_2024 +corn_ar1_map)  / (corn_rw1_map + corn_rw2_map)
+
+```
+
+#### 2025 Forecast
+
+The autoregression performed the best, so using that.
+
+Making a data set for 2025
+```{r}
+# Get historical averages for Aug–Oct by county
+hist_avg_late <- weather_avg %>%
+  filter(month %in% 8:10) %>%
+  group_by(county, month) %>%
+  summarise(
+    mean_temp = mean(mean_temp, na.rm = TRUE),
+    total_precip = mean(total_precip, na.rm = TRUE),
+    max_humidity = mean(max_humidity, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Merge with 2025 actual data up to July and fill missing with averages
+weather_2025_filled <- weather_avg %>%
+  filter(year == 2025) %>%
+  full_join(hist_avg_late, by = c("county", "month")) %>%
+  mutate(
+    mean_temp = ifelse(is.na(mean_temp.x), mean_temp.y, mean_temp.x),
+    total_precip = ifelse(is.na(total_precip.x), total_precip.y, total_precip.x),
+    max_humidity = ifelse(is.na(max_humidity.x), max_humidity.y, max_humidity.x)
+  ) %>%
+  dplyr::select(county, month, mean_temp, total_precip, max_humidity, year = year) %>%
+  replace_na(list(year = 2025))
+
+weather_2025_wide <- weather_2025_filled %>%
+  pivot_wider(
+    names_from = month,
+    values_from = c(mean_temp, total_precip, max_humidity),
+    names_glue = "{.value}_m{month}"
+  )
+
+```
+
+```{r}
+corn_2024_yield <- full_corn_data %>%
+  filter(year == 2024) %>%
+  dplyr::select(county, yield_lag1 = yield)
+
+corn_2025 <- corn_2024_yield %>%
+  left_join(weather_2025_wide, by = "county") %>%
+  left_join(
+    full_corn_data %>%
+      filter(year == 2024) %>%
+      dplyr::select(county, slope1_avg, kfactor_avg) %>%
+      distinct(),
+    by = "county"
+  ) %>%
+  mutate(year = 2025)
+
+```
+
+```{r}
+corn_2025$yield_pred_ar1 <- predict(corn_model_ar1_full, newdata = corn_2025)
+
+```
+
+```{r}
+#adding predictions to the set
+full_predictions <- bind_rows(
+  full_corn_data %>% mutate(yield_pred_ar1 = NA),
+  corn_2025
+)
+
+```
+
+```{r}
+# Table: County + 2025 predicted yield
+pred_table_2025 <- corn_2025 %>%
+  transmute(
+    County = county,
+    `Predicted_Yield_2025` = round(yield_pred_ar1, 1)
+  ) %>%
+  arrange(County)
+
+knitr::kable(pred_table_2025, caption = "AR(1) Predicted Corn Yield by County (2025)")
+# Or DT::datatable(pred_table_2025, rownames = FALSE)
+
+```
+
+```{r}
+# Get one geometry per county and join predictions
+corn_2025_sf <- corn_regions %>% 
+  distinct(county, .keep_all = TRUE) %>%
+  left_join(pred_table_2025, by = c("county" = "County"))
+
+pred_2025_map <- ggplot(data = corn_2025_sf) +
+  geom_sf(aes(fill = Predicted_Yield_2025), color = "gray30") +
+  scale_fill_viridis_c(option = "D") +
+  labs(
+    title = "Corn Yield by County (Predicted 2025, AR(1))",
+
+pred_2025_map
 ```
 
 ##### For Soybean
