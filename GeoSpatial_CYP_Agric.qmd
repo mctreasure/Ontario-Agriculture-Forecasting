@@ -42,6 +42,53 @@ crs <- st_crs("EPSG:3347")
 
 
 ```{r}
+project_dir <- "C:/Users/FREEMAN/Downloads/6500_project"
+
+# Canada shapefile
+can <- st_read(file.path(project_dir, "data", "lcar000b21a_e.shp")) |>
+  janitor::clean_names() |>
+  st_transform(crs = crs)
+
+# Ontario shapefile (regions)
+ontario <- st_read(file.path(project_dir, "data", "Ministry_of_Natural_Resources_area%2C_district_and_region_administrative_boundaries_(1997-2022)_.shp")) |>
+  janitor::clean_names() |>
+  st_transform(crs = crs)
+
+# Ontario shapefile (districts)
+ontario_district <- st_read(file.path(project_dir, "data", "MNR_District.shp")) |>
+  janitor::clean_names() |>
+  st_transform(crs = crs)
+
+# Soil complex
+soil <- st_read(file.path(project_dir, "data", "Soil_Survey_Complex.shp")) |>
+  janitor::clean_names() |>
+  st_transform(crs = crs)
+
+
+#ontario corn data
+corn_data_sf <- st_read(file.path(project_dir, "Ontario-Agriculture-Forecasting", "corn_data.gpkg")) |>
+  janitor::clean_names() |>
+  st_transform(crs = crs)
+
+# #ontario soybean data
+# soybean_data_sf <- st_read(file.path(project_dir, "Ontario-Agriculture-Forecasting", "Crop Data", "soybeans_cleaned_data.csv")) |>
+#   janitor::clean_names() |>
+#   st_transform(crs = crs)
+# 
+# #ontario winter wheat data
+# wheat_data_sf <- st_read(file.path(project_dir, "Ontario-Agriculture-Forecasting", "Crop Data", "wheat_cleaned_data.csv")) |>
+#   janitor::clean_names() |>
+#   st_transform(crs = crs)
+
+# Weather data
+weather <- read.csv(file.path(project_dir, "Ontario-Agriculture-Forecasting", "monthly_weather.csv")) |>
+  st_as_sf(coords = c("x", "y"), crs = 4326) |>
+  st_transform(crs = crs)
+```
+
+
+
+```{r}
 project_dir <- "C:/Users/mckay/OneDrive - University of Guelph/Masters/DATA 6500/Final Project"
 
 # Canada shapefile
@@ -113,21 +160,15 @@ ontario_crop <- crop_sf[ontario, ]
 
 ```{r, echo=FALSE, fig.cap= "Crops Grown in all Provinces of Canada Vs Crops Grown in Ontario", warning=FALSE}
 
-# crops grown in Canada
-p1<-tm_shape(can)+
-  tm_polygons(col = "gray90", border.col = "white")+
-  
-  tm_shape(crop_sf) +
-  tm_symbols(col = "crop", palette = "YlOrRd", size = 0.3, title = "Crop Yield") 
 
 # crops grown in Ontario
-p2<-tm_shape(ontario_district)+
+tm_shape(ontario_district)+
   tm_polygons(col = "gray90", border.col = "white")+
   
-  tm_shape(ontario_crop) +
+  tm_shape(corn_data_sf) +
   tm_symbols(col = "crop", palette = "YlOrRd", size = 0.3, title = "Crop Yield") 
 
-tmap_arrange(p1, p2, ncol =2)
+
 ```
  
 ```{r, echo=FALSE, fig.cap= "Distribution of Soil texture and production of field crops across Ontario", warning=FALSE}
@@ -777,7 +818,7 @@ sum(is.na(weather_corn_gs$total_precip))
 
 ```
 
-#### 2024 Forecast
+#### 2024 Forecast for Corn
 
 ```{r, echo=FALSE, include=FALSE}
 
@@ -847,6 +888,8 @@ full_corn_data <- corn_yield %>%
 head(full_corn_data)
 
 ```
+
+
 
 
 #### Autoregression 
@@ -970,6 +1013,357 @@ summary(corn_rw2_2024$yield_pred_rw2)  # For RW2
 
 ```
 
+
+## Soybean Yield
+
+The corn growing season is from May-October.  
+```{r}
+#weather during the corn growing season for each year/station
+weather_soybean_gs <- weather %>%
+  filter(month %in% 5:9)
+
+head(weather_soybean_gs)
+```
+
+```{r}
+glimpse(soybean_data_sf)
+head(soil)
+```
+
+#### 2024 Forecast for Soybean
+
+```{r, echo=FALSE, include=FALSE}
+
+#attaching a station's information to the yield
+soybean_regions <- dplyr::select(soybean_data_sf, county, geom)
+
+weather_with_county_soy <- st_join(weather_soybean_gs, soybean_regions, join = st_nearest_feature)
+
+head(weather_with_county_soy)
+
+#grouping the weather for each county
+weather_avg_soy <- weather_with_county_soy %>%
+  st_drop_geometry() %>%
+  group_by(county, year, month) %>%
+  summarise(
+    mean_temp = mean(mean_temp, na.rm = TRUE),
+    total_precip = mean(total_precip, na.rm = TRUE),
+    max_humidity = mean(max_humidity, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+head(weather_avg_soy)
+
+#reshaping for one weather per month
+weather_wide_soy <- weather_avg_soy %>%
+  pivot_wider(
+    names_from = month,
+    values_from = c(mean_temp, total_precip, max_humidity),
+    names_glue = "{.value}_m{month}"
+  )
+
+```
+
+```{r, echo=FALSE}
+#integrating the soil information
+soil_joined <- st_join(soybean_data_sf, soil_clean, join = st_intersects)
+
+soil_info <- soil_joined %>%
+  sf::st_drop_geometry() %>%
+  dplyr::select(county, year, slope1, k_factor1, atexture1, drainage1) %>%
+  distinct()
+```
+
+```{r, echo=FALSE}
+#combining weather and yield information 
+
+#dropping the geometry for now
+soybean_yield <- soybean_data_sf %>%
+  sf::st_drop_geometry() %>%
+  dplyr::mutate(yield = as.numeric(yield_bushels_ac)) %>%
+  dplyr::select(county, year, yield)
+
+full_soybean_data <- soybean_yield %>%
+  left_join(weather_wide_soy, by = c("county", "year"))
+
+full_soybean_data <- full_soybean_data %>%
+  left_join(soil_info, by = c("county", "year"))
+
+full_soybean_data<- full_soybean_data %>% 
+  dplyr::mutate(
+    atexture1 = factor(atexture1),
+    drainage1 = factor(drainage1)
+  )
+
+head(full_soybean_data)
+
+```
+
+
+
+#### Autoregression 
+```{r}
+#creating a lag to to capture the patterns from the previous time step
+full_soybean_data <- full_soybean_data %>%
+  arrange(county, year) %>%
+  group_by(county) %>%
+  mutate(yield_lag1 = dplyr::lag(yield, n = 1)) %>%
+  ungroup()
+```
+
+```{r}
+#training and test sets for the ar
+soybean_train <- full_soybean_data %>% filter(year < 2024)
+soybean_test <- full_soybean_data %>% filter(year == 2024)
+```
+
+```{r}
+soybean_model_ar1_full <- lm(
+  yield ~ yield_lag1 +
+    mean_temp_m5 + mean_temp_m6 + mean_temp_m7 + mean_temp_m8 + mean_temp_m9 + mean_temp_m10 +
+    total_precip_m5 + total_precip_m6 + total_precip_m7 + total_precip_m8 + total_precip_m9 + total_precip_m10 +
+    slope1 + k_factor1 + drainage1 + atexture1,
+  data = soybean_train
+)
+```
+
+```{r}
+soybean_test$yield_pred_ar1 <- predict(soybean_model_ar1_full, newdata = soybean_test)
+```
+
+#### Random Walk 1
+
+```{r}
+# Random Walk 1: Predict 2024 yield as the 2023 yield (lag1)
+full_soybean_data <- full_soybean_data %>%
+  arrange(county, year) %>%
+  group_by(county) %>%
+  mutate(yield_rw1 = lag(yield, n = 1)) %>%  # 2023 yield for 2024 prediction
+  ungroup()
+
+soybean_rw1_2024 <- full_soybean_data %>%
+  filter(year == 2024, !is.na(yield_rw1))
+
+soybean_rw1_model <- lm(
+  yield ~ yield_rw1 + mean_temp_m5 + mean_temp_m6 + mean_temp_m7 + mean_temp_m8 + mean_temp_m9 +
+           total_precip_m5 + total_precip_m6 + total_precip_m7 + total_precip_m8 + total_precip_m9 +
+           slope1 + k_factor1 + atexture1 + drainage1,
+  data = corn_rw1_2024
+)
+
+```
+
+```{r}
+#2024 forecast
+soybean_rw1_2024 <- soybean_rw1_2024 %>%
+  mutate(yield_pred_rw1_adjusted = predict(rw1_model, newdata = rw1_2024))
+```
+
+#### Random Walk 2
+```{r}
+full_soybean_data <- full_soybean_data %>%
+  arrange(county, year) %>%
+  group_by(county) %>%
+  mutate(
+    yield_rw2 = 2 * lag(yield, n = 1) - lag(yield, n = 2)
+  ) %>%
+  ungroup()
+
+soybean_rw2_2024 <- full_soybean_data %>%
+  filter(year == 2024, !is.na(yield_rw2))
+
+soybean_rw2_model <- lm(
+  yield ~ yield_rw2 + mean_temp_m5 + mean_temp_m6 + mean_temp_m7 + mean_temp_m8 + mean_temp_m9 +
+           total_precip_m5 + total_precip_m6 + total_precip_m7 + total_precip_m8 + total_precip_m9 +
+           slope1 + k_factor1 + atexture1 + drainage1,
+  data =corn_rw2_2024
+)
+
+```
+
+```{r}
+#2024 forecast
+soybean_rw2_2024 <- soybean_rw2_2024 %>%
+  mutate(yield_pred_rw2_adjusted = predict(soybean_rw2_model, newdata = soybean_rw2_2024))
+
+```
+
+
+
+## Winter Wheat Yield
+
+The corn growing season is from May-October.  
+```{r}
+#weather during the corn growing season for each year/station
+weather_wheat_gs <- weather %>%
+  filter(month %in% 10:7)
+
+head(weather_wheat_gs)
+```
+
+```{r}
+glimpse(wheat_data_sf)
+head(soil)
+```
+
+#### 2024 Forecast for Soybean
+
+```{r, echo=FALSE, include=FALSE}
+
+#attaching a station's information to the yield
+wheat_regions <- dplyr::select(wheat_data_sf, county, geom)
+
+weather_with_county_wheat <- st_join(weather_wheat_gs, wheat_regions, join = st_nearest_feature)
+
+head(weather_with_county_wheat)
+
+#grouping the weather for each county
+weather_avg_wheat <- weather_with_county_wheat %>%
+  st_drop_geometry() %>%
+  group_by(county, year, month) %>%
+  summarise(
+    mean_temp = mean(mean_temp, na.rm = TRUE),
+    total_precip = mean(total_precip, na.rm = TRUE),
+    max_humidity = mean(max_humidity, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+head(weather_avg_wheat)
+
+#reshaping for one weather per month
+weather_wide_wheat <- weather_avg_wheat %>%
+  pivot_wider(
+    names_from = month,
+    values_from = c(mean_temp, total_precip, max_humidity),
+    names_glue = "{.value}_m{month}"
+  )
+
+```
+
+```{r, echo=FALSE}
+#integrating the soil information
+soil_joined <- st_join(wheat_data_sf, soil_clean, join = st_intersects)
+
+soil_info <- soil_joined %>%
+  sf::st_drop_geometry() %>%
+  dplyr::select(county, year, slope1, k_factor1, atexture1, drainage1) %>%
+  distinct()
+```
+
+```{r, echo=FALSE}
+#combining weather and yield information 
+
+#dropping the geometry for now
+wheat_yield <- wheat_data_sf %>%
+  sf::st_drop_geometry() %>%
+  dplyr::mutate(yield = as.numeric(yield_bushels_ac)) %>%
+  dplyr::select(county, year, yield)
+
+full_wheat_data <- wheat_yield %>%
+  left_join(weather_wide_wheat, by = c("county", "year"))
+
+full_wheat_data <- full_wheat_data %>%
+  left_join(soil_info, by = c("county", "year"))
+
+full_wheat_data<- full_wheat_data %>% 
+  dplyr::mutate(
+    atexture1 = factor(atexture1),
+    drainage1 = factor(drainage1)
+  )
+
+head(full_wheat_data)
+
+```
+
+
+
+#### Autoregression 
+```{r}
+#creating a lag to to capture the patterns from the previous time step
+full_wheat_data <- full_wheat_data %>%
+  arrange(county, year) %>%
+  group_by(county) %>%
+  mutate(yield_lag1 = dplyr::lag(yield, n = 1)) %>%
+  ungroup()
+```
+
+```{r}
+#training and test sets for the ar
+wheat_train <- full_wheat_data %>% filter(year < 2024)
+wheat_test <- full_wheat_data %>% filter(year == 2024)
+```
+
+```{r}
+wheat_model_ar1_full <- lm(
+  yield ~ yield_lag1 +
+    mean_temp_m5 + mean_temp_m6 + mean_temp_m7 + mean_temp_m8 + mean_temp_m9 + mean_temp_m10 +
+    total_precip_m5 + total_precip_m6 + total_precip_m7 + total_precip_m8 + total_precip_m9 + total_precip_m10 +
+    slope1 + k_factor1 + drainage1 + atexture1,
+  data = wheat_train
+)
+```
+
+```{r}
+wheat_test$yield_pred_ar1 <- predict(wheat_model_ar1_full, newdata = wheat_test)
+```
+
+#### Random Walk 1
+
+```{r}
+# Random Walk 1: Predict 2024 yield as the 2023 yield (lag1)
+full_wheat_data <- full_wheat_data %>%
+  arrange(county, year) %>%
+  group_by(county) %>%
+  mutate(yield_rw1 = lag(yield, n = 1)) %>%  # 2023 yield for 2024 prediction
+  ungroup()
+
+wheat_rw1_2024 <- full_wheat_data %>%
+  filter(year == 2024, !is.na(yield_rw1))
+
+wheat_rw1_model <- lm(
+  yield ~ yield_rw1 + mean_temp_m5 + mean_temp_m6 + mean_temp_m7 + mean_temp_m8 + mean_temp_m9 +
+           total_precip_m5 + total_precip_m6 + total_precip_m7 + total_precip_m8 + total_precip_m9 +
+           slope1 + k_factor1 + atexture1 + drainage1,
+  data = corn_rw1_2024
+)
+
+```
+
+```{r}
+#2024 forecast
+wheat_rw1_2024 <- wheat_rw1_2024 %>%
+  mutate(yield_pred_rw1_adjusted = predict(rw1_model, newdata = rw1_2024))
+```
+
+#### Random Walk 2
+```{r}
+full_wheat_data <- full_wheat_data %>%
+  arrange(county, year) %>%
+  group_by(county) %>%
+  mutate(
+    yield_rw2 = 2 * lag(yield, n = 1) - lag(yield, n = 2)
+  ) %>%
+  ungroup()
+
+wheat_rw2_2024 <- full_wheat_data %>%
+  filter(year == 2024, !is.na(yield_rw2))
+
+wheat_rw2_model <- lm(
+  yield ~ yield_rw2 + mean_temp_m5 + mean_temp_m6 + mean_temp_m7 + mean_temp_m8 + mean_temp_m9 +
+           total_precip_m5 + total_precip_m6 + total_precip_m7 + total_precip_m8 + total_precip_m9 +
+           slope1 + k_factor1 + atexture1 + drainage1,
+  data =wheat_rw2_2024
+)
+
+```
+
+```{r}
+#2024 forecast
+wheat_rw2_2024 <- wheat_rw2_2024 %>%
+  mutate(yield_pred_rw2_adjusted = predict(wheat_rw2_model, newdata = wheat_rw2_2024))
+
+```
+
 #### Model Evaluations
 
 ```{r}
@@ -1044,7 +1438,7 @@ mean_comparison <- corn_2024_predictions %>%
 
 
 ```
-
+##### For Corn
 ```{r}
 #full 2024 
 corn_2024_sf <- corn_data_sf %>%
@@ -1054,7 +1448,7 @@ corn_2024_sf <- corn_2024_sf %>%
   mutate(`yield_bushels_ac` = as.numeric(`yield_bushels_ac`))
 
 
-real_2024 <- ggplot(data = corn_2024_sf) +
+real_corn_2024 <- ggplot(data = corn_2024_sf) +
   geom_sf(aes(fill = `yield_bushels_ac`), color = "gray30") +
   scale_fill_viridis_c(option = "D") +
   labs(
@@ -1063,6 +1457,7 @@ real_2024 <- ggplot(data = corn_2024_sf) +
   ) +
   theme_minimal()
 
+<<<<<<< HEAD
 # Merge predictions into corn_2024_sf
 corn_2024_sf <- corn_2024_sf %>%
   left_join(
@@ -1199,10 +1594,51 @@ pred_2025_map <- ggplot(data = corn_2025_sf) +
   scale_fill_viridis_c(option = "D") +
   labs(
     title = "Corn Yield by County (Predicted 2025, AR(1))",
+
+pred_2025_map
+```
+
+##### For Soybean
+```{r}
+#full 2024 
+soybean_2024_sf <- soybean_data_sf %>%
+  filter(year == 2024)
+
+soybean_2024_sf <- soybean_2024_sf %>%
+  mutate(`yield_bushels_ac` = as.numeric(`yield_bushels_ac`))
+
+
+real_soybean_2024 <- ggplot(data = soybean_2024_sf) +
+  geom_sf(aes(fill = `yield_bushels_ac`), color = "gray30") +
+  scale_fill_viridis_c(option = "D") +
+  labs(
+    title = "Soybean Yield by County (2024)",
     fill = "Yield (bu/ac)"
   ) +
   theme_minimal()
 
-pred_2025_map
+real_soybean_2024
+```
 
+#### For Winter Wheat
+
+```{r}
+#full 2024 
+wheat_2024_sf <- wheat_data_sf %>%
+  filter(year == 2024)
+
+wheat_2024_sf <- wheat_2024_sf %>%
+  mutate(`yield_bushels_ac` = as.numeric(`yield_bushels_ac`))
+
+
+real_wheat_2024 <- ggplot(data = wheat_2024_sf) +
+  geom_sf(aes(fill = `yield_bushels_ac`), color = "gray30") +
+  scale_fill_viridis_c(option = "D") +
+  labs(
+    title = "Wheat Yield by County (2024)",
+    fill = "Yield (bu/ac)"
+  ) +
+  theme_minimal()
+
+real__wheat_2024
 ```
