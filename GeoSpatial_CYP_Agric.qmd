@@ -1036,7 +1036,7 @@ summary(corn_rw2_2024$yield_pred_rw2)  # For RW2
 
 ## Soybean Yield
 
-The corn growing season is from May-October.  
+The soybean growing season is from May-September.  
 ```{r}
 #weather during the corn growing season for each year/station
 weather_soybean_gs <- weather %>%
@@ -1140,8 +1140,8 @@ soybean_test <- full_soybean_data %>% filter(year == 2024)
 ```{r}
 soybean_model_ar1_full <- lm(
   yield ~ yield_lag1 +
-    mean_temp_m5 + mean_temp_m6 + mean_temp_m7 + mean_temp_m8 + mean_temp_m9 + mean_temp_m10 +
-    total_precip_m5 + total_precip_m6 + total_precip_m7 + total_precip_m8 + total_precip_m9 + total_precip_m10 +
+    mean_temp_m5 + mean_temp_m6 + mean_temp_m7 + mean_temp_m8 + mean_temp_m9 + 
+    total_precip_m5 + total_precip_m6 + total_precip_m7 + total_precip_m8 + total_precip_m9 + 
     slope1 + k_factor1 + drainage1 + atexture1,
   data = soybean_train
 )
@@ -1168,7 +1168,7 @@ soybean_rw1_model <- lm(
   yield ~ yield_rw1 + mean_temp_m5 + mean_temp_m6 + mean_temp_m7 + mean_temp_m8 + mean_temp_m9 +
            total_precip_m5 + total_precip_m6 + total_precip_m7 + total_precip_m8 + total_precip_m9 +
            slope1 + k_factor1 + atexture1 + drainage1,
-  data = corn_rw1_2024
+  data = soybean_rw1_2024
 )
 
 ```
@@ -1212,7 +1212,7 @@ soybean_rw2_2024 <- soybean_rw2_2024 %>%
 
 ## Winter Wheat Yield
 
-The corn growing season is from May-October.  
+The winter growing season is from October to July next year.  
 ```{r}
 #weather during the corn growing season for each year/station
 weather_wheat_gs <- weather %>%
@@ -1226,7 +1226,7 @@ glimpse(wheat_data_sf)
 head(soil)
 ```
 
-#### 2024 Forecast for Soybean
+#### 2024 Forecast for Wheat
 
 ```{r, echo=FALSE, include=FALSE}
 
@@ -1316,8 +1316,8 @@ wheat_test <- full_wheat_data %>% filter(year == 2024)
 ```{r}
 wheat_model_ar1_full <- lm(
   yield ~ yield_lag1 +
-    mean_temp_m5 + mean_temp_m6 + mean_temp_m7 + mean_temp_m8 + mean_temp_m9 + mean_temp_m10 +
-    total_precip_m5 + total_precip_m6 + total_precip_m7 + total_precip_m8 + total_precip_m9 + total_precip_m10 +
+    mean_temp_m10 + mean_temp_m11 + mean_temp_m12 + mean_temp_m1 + mean_temp_m2 + mean_temp_m3 + mean_temp_m4 + mean_temp_m5 + mean_temp_m6 + mean_temp_m7 +
+    total_precip_m10 + total_precip_m11 + total_precip_m12 + total_precip_m1 + total_precip_m2 + total_precip_m3 + total_precip_m4 + total_precip_m5 + total_precip_m6 + total_precip_m7 +
     slope1 + k_factor1 + drainage1 + atexture1,
   data = wheat_train
 )
@@ -1341,10 +1341,10 @@ wheat_rw1_2024 <- full_wheat_data %>%
   filter(year == 2024, !is.na(yield_rw1))
 
 wheat_rw1_model <- lm(
-  yield ~ yield_rw1 + mean_temp_m5 + mean_temp_m6 + mean_temp_m7 + mean_temp_m8 + mean_temp_m9 +
-           total_precip_m5 + total_precip_m6 + total_precip_m7 + total_precip_m8 + total_precip_m9 +
+  yield ~ yield_rw1 + mean_temp_m10 + mean_temp_m11 + mean_temp_m12 + mean_temp_m1 + mean_temp_m2 + mean_temp_m3 + mean_temp_m4 + mean_temp_m5 + mean_temp_m6 + mean_temp_m7 +
+           total_precip_m10 + total_precip_m11 + total_precip_m12 + total_precip_m1 + total_precip_m2 + total_precip_m3 + total_precip_m4 + total_precip_m5 + total_precip_m6 + total_precip_m7 + 
            slope1 + k_factor1 + atexture1 + drainage1,
-  data = corn_rw1_2024
+  data = wheat_rw1_2024
 )
 
 ```
@@ -1369,11 +1369,12 @@ wheat_rw2_2024 <- full_wheat_data %>%
   filter(year == 2024, !is.na(yield_rw2))
 
 wheat_rw2_model <- lm(
-  yield ~ yield_rw2 + mean_temp_m5 + mean_temp_m6 + mean_temp_m7 + mean_temp_m8 + mean_temp_m9 +
-           total_precip_m5 + total_precip_m6 + total_precip_m7 + total_precip_m8 + total_precip_m9 +
+  yield ~ yield_rw1 + mean_temp_m10 + mean_temp_m11 + mean_temp_m12 + mean_temp_m1 + mean_temp_m2 + mean_temp_m3 + mean_temp_m4 + mean_temp_m5 + mean_temp_m6 + mean_temp_m7 +
+           total_precip_m10 + total_precip_m11 + total_precip_m12 + total_precip_m1 + total_precip_m2 + total_precip_m3 + total_precip_m4 + total_precip_m5 + total_precip_m6 + total_precip_m7 + 
            slope1 + k_factor1 + atexture1 + drainage1,
-  data =wheat_rw2_2024
+  data = wheat_rw2_2024
 )
+
 
 ```
 
