@@ -44,10 +44,10 @@ crs <- st_crs("EPSG:3347")
 ```{r}
 project_dir <- "C:/Users/FREEMAN/Downloads/6500_project"
 
-# Canada shapefile
-can <- st_read(file.path(project_dir, "data", "lcar000b21a_e.shp")) |>
-  janitor::clean_names() |>
-  st_transform(crs = crs)
+# # Canada shapefile
+# can <- st_read(file.path(project_dir, "data", "lcar000b21a_e.shp")) |>
+#   janitor::clean_names() |>
+#   st_transform(crs = crs)
 
 # Ontario shapefile (regions)
 ontario <- st_read(file.path(project_dir, "data", "Ministry_of_Natural_Resources_area%2C_district_and_region_administrative_boundaries_(1997-2022)_.shp")) |>
@@ -70,15 +70,25 @@ corn_data_sf <- st_read(file.path(project_dir, "Ontario-Agriculture-Forecasting"
   janitor::clean_names() |>
   st_transform(crs = crs)
 
+#ontario soybean data
+soybean_data_sf <- st_read(file.path(project_dir, "Ontario-Agriculture-Forecasting", "soybean_data.gpkg")) |>
+  janitor::clean_names() |>
+  st_transform(crs = crs)
+
+#ontario wheat data
+wheat_data_sf <- st_read(file.path(project_dir, "Ontario-Agriculture-Forecasting", "wheat_data.gpkg")) |>
+  janitor::clean_names() |>
+  st_transform(crs = crs)
+
 # #ontario soybean data
-# soybean_data_sf <- st_read(file.path(project_dir, "Ontario-Agriculture-Forecasting", "Crop Data", "soybeans_cleaned_data.csv")) |>
-#   janitor::clean_names() |>
-#   st_transform(crs = crs)
+# soybeans_data <- st_read(file.path(project_dir, "Ontario-Agriculture-Forecasting", "Crop Data", "soybeans_cleaned_data.csv")) |>
+#   janitor::clean_names() 
+#   #st_transform(crs = crs)
 # 
 # #ontario winter wheat data
-# wheat_data_sf <- st_read(file.path(project_dir, "Ontario-Agriculture-Forecasting", "Crop Data", "wheat_cleaned_data.csv")) |>
-#   janitor::clean_names() |>
-#   st_transform(crs = crs)
+# wheat_data <- st_read(file.path(project_dir, "Ontario-Agriculture-Forecasting", "Crop Data", "wheat_cleaned_data.csv")) |>
+#   janitor::clean_names() 
+#   #st_transform(crs = crs)
 
 # Weather data
 weather <- read.csv(file.path(project_dir, "Ontario-Agriculture-Forecasting", "monthly_weather.csv")) |>
@@ -128,6 +138,7 @@ corn_data_sf <- st_read(file.path(project_dir, "corn_data.gpkg")) |>
   janitor::clean_names() |>
   st_transform(crs = crs)
 
+
 # Weather data
 weather <- read.csv(file.path(project_dir, "monthly_weather.csv")) |>
   st_as_sf(coords = c("x", "y"), crs = 4326) |>
@@ -137,6 +148,15 @@ weather <- read.csv(file.path(project_dir, "monthly_weather.csv")) |>
 https://geohub.lio.gov.on.ca/datasets/af9f7332322044ea992c2701cc326774_6/explore?location=43.964174%2C-83.643395%2C2.96
 
 https://www12.statcan.gc.ca/census-recensement/2021/geo/sip-pis/boundary-limites/index2021-eng.cfm?year=21
+
+```{r}
+
+# Make sure year is the same type
+corn_data_sf <- corn_data_sf %>% mutate(year = as.character(year))
+soybeans_data_sf <- soybean_data_sf %>% mutate(year = as.character(year))
+wheat_data_sf <- wheat_data_sf %>% mutate(year = as.character(year))
+```
+
 
 
 ```{r, echo=FALSE}
