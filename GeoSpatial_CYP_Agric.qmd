@@ -121,23 +121,20 @@ soil <- st_read(file.path(project_dir, "forecast_project_data", "data", "Soil_Su
   janitor::clean_names() |>
   st_transform(crs = crs)
 
-# # 2024 crop forecast
-# crop <- read.csv(file.path(project_dir, "forecast_project_data", "data", "crop_yield_forecast_by_CAR.csv")) |>
-#   janitor::clean_names()
-# crop_sf <- st_as_sf(crop, coords = c("longitude", "latitude"), crs = 4326) |>
-#   st_transform(crs = crs)
-# 
-# # Historical crop data
-# crop_hist <- read.csv(file.path(project_dir, "forecast_project_data", "data", "historical_actual_crop_yield_by_CAR.csv")) |>
-#   janitor::clean_names()
-# crop_hist_sf <- st_as_sf(crop_hist, coords = c("longitude", "latitude"), crs = 4326) |>
-#   st_transform(crs = crs)
-
-#ontario corn data
+#Ontario corn data
 corn_data_sf <- st_read(file.path(project_dir, "corn_data.gpkg")) |>
   janitor::clean_names() |>
   st_transform(crs = crs)
 
+#Ontario soybean data
+soybean_data_sf <- st_read(file.path(project_dir, "soybean_data.gpkg")) |>
+  janitor::clean_names() |>
+  st_transform(crs = crs)
+
+#Ontario wheat data
+wheat_data_sf <- st_read(file.path(project_dir, "wheat_data.gpkg")) |>
+  janitor::clean_names() |>
+  st_transform(crs = crs)
 
 # Weather data
 weather <- read.csv(file.path(project_dir, "monthly_weather.csv")) |>
@@ -454,43 +451,37 @@ result <- inla(
 Looking at trends in the weather.  Initial Kriging for the weather data
 
 ```{r, echo=false}
+
 weather <- weather %>%
   mutate(
     x = st_coordinates(.)[, 1],
     y = st_coordinates(.)[, 2]
   )
 
-#weather during corn growing season
-#may-october
-corn_trend <- weather %>%
-  filter(month >= 5 & month <= 10) %>%
-  group_by(year, month) %>%
+corn_trend_year <- weather %>%
+  filter(month %in% 5:10) %>%
+  group_by(year) %>%
   summarise(
     avg_temp = mean(mean_temp, na.rm = TRUE),
-    total_precip = mean(total_precip, na.rm = TRUE),
+    total_precip = mean(total_precip, na.rm = TRUE),  # or mean(...) if that’s what you want
     avg_max_humidity = mean(max_humidity, na.rm = TRUE),
     .groups = "drop"
   )
 
+
 # Plot 1: Avg Temperature
-p1 <- ggplot(corn_trend, aes(x = year, y = avg_temp)) +
+p1 <- ggplot(corn_trend_year, aes(x = year, y = avg_temp)) +
   geom_line(color = "firebrick", size = 1) +
   labs(title = "Avg Temp (Corn Growing Season)", y = "°C", x = NULL) +
   theme_minimal()
 
 # Plot 2: Total Precipitation
-p2 <- ggplot(corn_trend, aes(x = year, y = total_precip)) +
+p2 <- ggplot(corn_trend_year, aes(x = year, y = total_precip)) +
   geom_line(color = "steelblue", size = 1) +
   labs(title = "Total Precipitation (Corn Season)", y = "cm", x = NULL) +
   theme_minimal()
 
-# Plot 3: Max Humidity
-p3 <- ggplot(corn_trend, aes(x = year, y = avg_max_humidity)) +
-  geom_line(color = "forestgreen", size = 1) +
-  labs(title = "Avg Max Humidity (Corn Season)", y = "%", x = "Year") +
-  theme_minimal()
-
-(p1 | p3) / p2
+(p1 ) / p2
 
 ```
 
@@ -502,7 +493,6 @@ mid_summer_corn_trend <- weather %>%
   summarise(
     avg_temp = mean(mean_temp, na.rm = TRUE),
     total_precip = mean(total_precip, na.rm = TRUE),
-    avg_max_humidity = mean(max_humidity, na.rm = TRUE),
     .groups = "drop"
   )
 
@@ -609,10 +599,14 @@ wheat_humid <- ggplot(wheat_trend, aes(x = year, y = avg_max_humidity)) +
 
 ```{r}
 
-(p1 | soy_temp | wheat_temp) / (mid_summer_corn | summer_soy_precip | wheat_precip) / (p3 | soy_humid | wheat_humid)
+(p1 | soy_temp | wheat_temp) / (mid_summer_corn | summer_soy_precip | wheat_precip) 
 
 ```
+
 ## Soil Cleaning 
+
+There are certain aspects of the soil that are important when it comes to crops.  For our analysis, we throught it would be best to focus on the texture, drainage, slope and the errosion factor of the soil.
+
 ```{r}
 soil_clean <- dplyr::select(
   soil,
@@ -628,9 +622,12 @@ head(soil_clean)
 ```
 #### Soil Kiging 
 
+Soil properties do now change at a fast rate, so we are assuming they are constant over the time we collected crop and weather data.  Therefore, we employed kriging to the soil slope and erosion factor to find the average for each region.
+
 ```{r, echo=FALSE, include=FALSE}
 library(cancensus)
 
+#getting the ontario districts from Cancasus
 # https://censusmapper.ca/api#api_overview
 options(cancensus.api_key = "CensusMapper_b3e4e303dcb50fad4050328d7c3a8e67")
 # Get Ontario's province code (35)
@@ -645,21 +642,67 @@ ontario_cd_sf <- get_census(
 Getting the average slope for the areas
 
 ```{r}
-krige_variable <- function(var_name, new_col_name, grid_sp) {
-  # 1. Prep soil points
-  soil_var <- soil_clean %>%
-    filter(!is.na(.data[[var_name]])) %>%
-    st_transform(st_crs(corn_data_sf)) %>%
-    st_centroid(of_largest_polygon = TRUE)
+# krige_variable <- function(var_name, new_col_name, grid_sp) {
+#   # Prep soil points
+#   soil_var <- soil_clean %>%
+#     filter(!is.na(.data[[var_name]])) %>%
+#     st_transform(st_crs(corn_data_sf)) %>%
+#     st_centroid(of_largest_polygon = TRUE)
+# 
+#   soil_sp <- as(soil_var, "Spatial")
+# 
+#   # Variogram + model
+#   v <- variogram(as.formula(paste0(var_name, " ~ 1")), data = soil_sp)
+#   model <- fit.variogram(v, model = vgm(1, "Exp", 100000, 0.1))
+# 
+#   # Kriging
+#   kriged <- krige(
+#     as.formula(paste0(var_name, " ~ 1")),
+#     soil_sp,
+#     newdata = grid_sp,
+#     model = model,
+#     nmax = 30
+#   )
+# 
+#   kriged_sf <- st_as_sf(kriged) %>%
+#     st_set_crs(st_crs(corn_data_sf))
+# 
+#   # Spatial join to crop regions
+#   joined <- st_join(kriged_sf, corn_data_sf, join = st_within, left = FALSE)
+# 
+#   # Average by region
+#   summary <- joined %>%
+#     st_drop_geometry() %>%
+#     group_by(county, year) %>%
+#     summarise(!!new_col_name := mean(var1.pred, na.rm = TRUE), .groups = "drop")
+# 
+#   return(summary)
+# }
 
+krige_variable <- function(var_name, new_col_name, grid_sp) {
+  # Ensure CRS consistency ------------------------------------------------------
+  corn_crs <- sf::st_crs(corn_data_sf)
+
+  # Prep soil points (to corn CRS)
+  soil_var <- soil_clean %>%
+    dplyr::filter(!is.na(.data[[var_name]])) %>%
+    sf::st_transform(corn_crs) %>%
+    sf::st_centroid(of_largest_polygon = TRUE)
+
+  # gstat uses sp classes
   soil_sp <- as(soil_var, "Spatial")
 
-  # 2. Variogram + model
-  v <- variogram(as.formula(paste0(var_name, " ~ 1")), data = soil_sp)
-  model <- fit.variogram(v, model = vgm(1, "Exp", 100000, 0.1))
+  # Variogram + model -----------------------------------------------------------
+  v <- gstat::variogram(as.formula(paste0(var_name, " ~ 1")), data = soil_sp)
+  model <- gstat::fit.variogram(v, model = gstat::vgm(1, "Exp", 100000, 0.1))
 
-  # 3. Kriging
-  kriged <- krige(
+  # Kriging --------------------------------------------------------------------
+  # Make sure grid CRS matches corn
+  if (!isTRUE(sp::identicalCRS(grid_sp, as(soil_var, "Spatial")))) {
+    sp::proj4string(grid_sp) <- sp::CRS(corn_crs$wkt)
+  }
+
+  kriged <- gstat::krige(
     as.formula(paste0(var_name, " ~ 1")),
     soil_sp,
     newdata = grid_sp,
@@ -667,19 +710,22 @@ krige_variable <- function(var_name, new_col_name, grid_sp) {
     nmax = 30
   )
 
-  kriged_sf <- st_as_sf(kriged) %>%
-    st_set_crs(st_crs(corn_data_sf))
+  kriged_sf <- sf::st_as_sf(kriged) %>%
+    sf::st_set_crs(corn_crs)
 
-  # 4. Spatial join to crop regions
-  joined <- st_join(kriged_sf, corn_data_sf, join = st_within, left = FALSE)
+  # One geometry per county (no year) ------------------------------------------
+  counties <- corn_data_sf %>%
+    dplyr::select(county, geom) %>%
+    dplyr::distinct(county, .keep_all = TRUE) %>%
+    sf::st_make_valid()
 
-  # 5. Average by region
-  summary <- joined %>%
-    st_drop_geometry() %>%
-    group_by(county, year) %>%
-    summarise(!!new_col_name := mean(var1.pred, na.rm = TRUE), .groups = "drop")
+  # Spatial join once, then average by county ----------------------------------
+  county_avg <- sf::st_join(kriged_sf, counties, join = sf::st_within) %>%
+    sf::st_drop_geometry() %>%
+    dplyr::group_by(county) %>%
+    dplyr::summarise(!!new_col_name := mean(var1.pred, na.rm = TRUE), .groups = "drop")
 
-  return(summary)
+  return(county_avg)  # county-level summary (no year)
 }
 
 ```
@@ -687,9 +733,10 @@ krige_variable <- function(var_name, new_col_name, grid_sp) {
 ```{r}
 grid <- st_make_grid(corn_data_sf, cellsize = 5000, what = "centers") %>%
   st_sf() %>%
-  st_transform(st_crs(corn_data_sf))
+  st_set_crs(st_crs(corn_data_sf))
 
-grid_sp <- as(grid, "Spatial")  # this is the missing part!
+# Convert to Spatial for gstat
+grid_sp <- as(grid, "Spatial")
 
 ```
 
@@ -699,17 +746,115 @@ grid_sp <- as(grid, "Spatial")  # this is the missing part!
 slope_summary <- krige_variable("slope1", "slope1_avg", grid_sp)
 kfactor_summary <- krige_variable("k_factor1", "kfactor_avg", grid_sp)
 
+head(slope_summary)
+
 ```
 
 ```{r}
 # Merge slope and kfactor summaries
 corn_data_sf <- corn_data_sf %>%
-  left_join(slope_summary, by = c("county", "year")) %>%
-  left_join(kfactor_summary, by = c("county", "year")) %>%
-  distinct(county, year, .keep_all = TRUE)  # clean duplicates
+  left_join(slope_summary, by = c("county")) %>%
+  left_join(kfactor_summary, by = c("county")) %>%
+  distinct(county, .keep_all = TRUE)  # clean duplicates
 ```
 
 ```{r}
+
+```
+
+For the soil texture and drainage, we found the mode for each area.
+```{r}
+# 1) Recode fast (vector maps) --------------------------
+tex_map <- c(
+  CL="Clay Loam", SCL="Clay Loam", SICL="Clay Loam",
+  SL="Sandy Loam", FSL="Sandy Loam", GSL="Sandy Loam", GL="Sandy Loam",
+  GLS="Sandy Loam", VFSL="Sandy Loam", LVFS="Sandy Loam",
+  L="Loam", SIL="Loam", VAR="Loam",
+  C="Clay", SIC="Clay",
+  S="Sand", FS="Sand", VFS="Sand", LS="Sand", LFS="Sand", CSL="Sand", LCS="Sand",
+  ORG="Organic"
+)
+
+dr_map <- c(
+  W="Well Drained", WA="Well Drained",
+  MW="Moderately Well",
+  P="Poorly Drained", VP="Poorly Drained",
+  VR="Very Poor", VA="Very Poor", R="Very Poor",
+  I="Imperfect"
+)
+
+soil_clean <- soil_clean %>%
+  mutate(
+    texture_group  = dplyr::recode(atexture1, !!!tex_map, .default = "Other"),
+    drainage_group = dplyr::recode(drainage1, !!!dr_map, .default = NA_character_)
+  )
+
+# 2) Ensure same CRS once --------------------------------
+corn_crs <- sf::st_crs(corn_data_sf)
+if (!identical(sf::st_crs(soil_clean), corn_crs)) {
+  soil_clean <- sf::st_transform(soil_clean, corn_crs)
+}
+
+# 3) One polygon per county (no year) --------------------
+counties <- corn_data_sf %>%
+  dplyr::select(county, geom) %>%
+  dplyr::distinct(county, .keep_all = TRUE) %>%
+  sf::st_make_valid()
+
+# (Optional) simplify county geometry if very complex
+# counties <- sf::st_simplify(counties, dTolerance = units::set_units(50, "m"))
+
+# 4) Spatial join soil -> county once --------------------
+soil_by_county <- soil_clean %>%
+  dplyr::filter(!is.na(texture_group), !is.na(drainage_group)) %>%
+  sf::st_join(counties, join = sf::st_within) %>%
+  sf::st_drop_geometry()
+
+# 5) Modes via counts (fast) -----------------------------
+texture_summary <- soil_by_county %>%
+  dplyr::count(county, texture_group, name = "n") %>%
+  dplyr::group_by(county) %>%
+  dplyr::slice_max(n, n = 1, with_ties = FALSE) %>%
+  dplyr::ungroup() %>%
+  dplyr::select(county, texture_mode = texture_group)
+
+drainage_summary <- soil_by_county %>%
+  dplyr::count(county, drainage_group, name = "n") %>%
+  dplyr::group_by(county) %>%
+  dplyr::slice_max(n, n = 1, with_ties = FALSE) %>%
+  dplyr::ungroup() %>%
+  dplyr::select(county, drainage_mode = drainage_group)
+
+# 6) Join back to county-year layer ----------------------
+corn_data_sf <- corn_data_sf %>%
+  dplyr::left_join(texture_summary,  by = "county") %>%
+  dplyr::left_join(drainage_summary, by = "county")
+
+```
+
+```{r, include=FALSE, echo=FALSE}
+#using the results from the kriging and mode calculation to join to the soybeans and winter wheat data
+soil_feats <- counties %>%
+  sf::st_drop_geometry() %>%
+  dplyr::left_join(slope_summary,    by = "county") %>%
+  dplyr::left_join(kfactor_summary,  by = "county") %>%
+  dplyr::left_join(texture_summary,  by = "county") %>%
+  dplyr::left_join(drainage_summary, by = "county")
+
+# Soybeans (rename to match key)
+soybeans_data_sf <- soybeans_data_sf %>%
+  dplyr::left_join(soil_feats, by = "county")
+# (Optionally rename back after)
+# soybeans_data_sf <- dplyr::rename(soybeans_data_sf, County = county)
+
+# Wheat
+wheat_data_sf <- wheat_data_sf %>%
+  dplyr::left_join(soil_feats, by = "county")
+
+```
+
+```{r}
+#check with corn
 #plot results of the kriging 
 corn_check <- corn_data_sf %>%
   filter(year == 2004)  # or any year you want to explore
@@ -718,7 +863,7 @@ corn_slope <- ggplot(corn_check) +
   geom_sf(aes(fill = slope1_avg), color = "grey40") +
   scale_fill_viridis_c(name = "Slope", na.value = "white") +
   labs(
-    title = "Kriged Slope by Corn Region (2004)",
+    title = "Kriged Slope by Corn Region",
     subtitle = "Interpolated from Soil Point Data",
     fill = "Slope"
   ) +
@@ -728,85 +873,36 @@ corn_kfactor <- ggplot(corn_check) +
   geom_sf(aes(fill = kfactor_avg), color = "grey40") +
   scale_fill_viridis_c(name = "K Factor", na.value = "white") +
   labs(
-    title = "Kriged K Factor by Corn Region (2004)",
+    title = "Kriged K Factor by Corn Region",
     subtitle = "Interpolated from Soil Point Data",
     fill = "K Factor"
   ) +
   theme_minimal()
 
-corn_slope | corn_kfactor
-```
-
-```{r}
-#will figure this out later
-#grouping the soil textures into more general categories
-soil_clean <- soil_clean %>%
-  mutate(
-    texture_group = case_when(
-      atexture1 %in% c("CL", "SCL", "SICL") ~ "Clay Loam",
-      atexture1 %in% c("SL", "FSL", "GSL", "GL", "GLS", "VFSL", "LVFS") ~ "Sandy Loam",
-      atexture1 %in% c("L", "SIL", "VAR") ~ "Loam",
-      atexture1 %in% c("C", "SIC") ~ "Clay",
-      atexture1 %in% c("S", "FS", "VFS", "LS", "LFS", "CSL", "LCS") ~ "Sand",
-      atexture1 %in% c("ORG") ~ "Organic",
-      TRUE ~ "Other"
-    )
-  )
-
-soil_clean <- soil_clean %>%
-  mutate(drainage_group = case_when(
-    drainage1 %in% c("W", "WA") ~ "Well Drained",
-    drainage1 %in% c("MW") ~ "Moderately Well",
-    drainage1 %in% c("P", "VP") ~ "Poorly Drained",
-    drainage1 %in% c("VR", "VA", "R") ~ "Very Poor",
-    drainage1 %in% c("I") ~ "Imperfect",
-    TRUE ~ NA_character_
-  ))
-
-soil_cats <- soil_clean %>%
-  filter(!is.na(texture_group) & !is.na(drainage_group)) %>%
-  st_transform(st_crs(corn_data_sf)) %>%
-  st_join(corn_data_sf, join = st_within, left = FALSE)
-
-# Texture mode
-texture_summary <- soil_cats %>%
-  group_by(county, year) %>%
-  summarise(texture_mode = names(sort(table(texture_group), decreasing = TRUE)[1]), .groups = "drop")
-
-# Drainage mode
-drainage_summary <- soil_cats %>%
-  group_by(county, year) %>%
-  summarise(drainage_mode = names(sort(table(drainage_group), decreasing = TRUE)[1]), .groups = "drop")
-
-corn_data_sf <- corn_data_sf %>%
-  left_join(texture_summary, by = c("county", "year")) %>%
-  left_join(drainage_summary, by = c("county", "year")) %>%
-  distinct(county, year, .keep_all = TRUE)
-
-#plot to check
 corn_texture <- ggplot(corn_data_sf %>% filter(year == 2004)) +
   geom_sf(aes(fill = texture_mode), color = "grey40") +
   scale_fill_viridis_d(name = "Texture") +
-  labs(title = "Most Common Soil Texture by Region (2004)") +
+  labs(title = "Most Common Soil Texture by Region") +
   theme_minimal()
 
 corn_drain <- ggplot(corn_data_sf %>% filter(year == 2004)) +
   geom_sf(aes(fill = drainage_mode), color = "grey40") +
   scale_fill_viridis_d(name = "Texture") +
-  labs(title = "Most Common Soil Texture by Region (2004)") +
+  labs(title = "Most Common Soil Texture by Region") +
   theme_minimal()
 
-
-```
-
-```{r}
 (corn_slope | corn_kfactor) / (corn_texture | corn_drain)
 ```
 
-```{r, echo=FALSE}
-head(soil_clean)
-unique(soil_clean$atexture1)
-unique(soil_clean$drainage1)
+```{r, echo=FALSE, include=FALSE}
+#writing the joined data sets to new files so don't need to keep ruinning the kirging.
+dir.create("crops_with_soil", showWarnings = FALSE)
+
+st_write(corn_data_sf,     file.path("crops_with_soil", paste0("corn_with_soil",     stamp, ".gpkg")), layer = "corn_with_soil",     quiet = TRUE)
+
+st_write(soybeans_data_sf, file.path("crops_with_soil", paste0("soybeans_with_soil", stamp, ".gpkg")), layer = "soybeans_with_soil", quiet = TRUE)
+
+st_write(wheat_data_sf,    file.path("crops_with_soil", paste0("wheat_with_soil",    stamp, ".gpkg")), layer = "wheat_with_soil",    quiet = TRUE)
 ```
 
 ## Corn Yield
@@ -820,17 +916,16 @@ weather_corn_gs <- weather %>%
 head(weather_corn_gs)
 colSums(is.na(weather_corn_gs))
 ```
-```{r}
-# Step 1: Identify rows with missing total_precip
-weather_na <- weather_corn_gs %>% filter(is.na(total_precip))
 
-# Step 2: Identify complete rows (non-NA total_precip)
+```{r}
+#identfying rows with missing total_precip
+weather_na <- weather_corn_gs %>% filter(is.na(total_precip))
 weather_complete <- weather_corn_gs %>% filter(!is.na(total_precip))
 
-# Step 3: Find nearest neighbor for each NA entry
+#determinging what the nearest station is for the missing data
 nearest_idx <- st_nearest_feature(weather_na, weather_complete)
 
-# Step 4: Fill NA values from nearest station's total_precip
+#filling NA values from nearest station's total_precip
 weather_corn_gs$total_precip[is.na(weather_corn_gs$total_precip)] <- 
   weather_complete$total_precip[nearest_idx]
 
@@ -848,7 +943,7 @@ corn_regions <- dplyr::select(corn_data_sf, county, geom)
 weather_with_county <- st_join(weather_corn_gs, corn_regions, join = st_nearest_feature)
 
 
-# Step 1: Fill in all county-year-month combinations (May–October)
+#filling in all county-year-month combinations (May–October)
 weather_avg_complete <- weather_with_county %>%
   st_drop_geometry() %>%
   group_by(county, year, month) %>%
@@ -860,13 +955,13 @@ weather_avg_complete <- weather_with_county %>%
   ) %>%
   complete(county, year, month = 5:10)  # Ensures full seasonal structure
 
-# Step 2: Fill in missing weather values within each county and month
+#filling in missing weather values within each county and month
 weather_avg_filled <- weather_avg_complete %>%
   group_by(county, month) %>%
   fill(mean_temp, total_precip, max_humidity, .direction = "downup") %>%
   ungroup()
 
-# Step 3: Reshape to wide format (one row per county-year)
+#reshaping to wide format (one row per county-year)
 weather_wide <- weather_avg_filled %>%
   pivot_wider(
     names_from = month,
@@ -894,23 +989,20 @@ colSums(is.na(weather_wide))
 ```
 
 ```{r, echo=FALSE}
-# Drop geometry and keep basic yield data
+#dropping geometry and keep basic yield data
+#it look a long time to run with the geometry- so dropping it to do the forecasting methods
 corn_yield <- corn_data_sf %>%
   sf::st_drop_geometry() %>%
   dplyr::mutate(yield = as.numeric(yield_bushels_ac)) %>%
   dplyr::select(county, year, yield, slope1_avg, kfactor_avg)
 
-# Join in weather (assuming corn_yield already has soil info)
+#join in weather 
 full_corn_data <- corn_yield %>%
   left_join(weather_wide, by = c("county", "year"))
 
-# Preview
 head(full_corn_data)
 
 ```
-
-
-
 
 #### Autoregression 
 ```{r}
@@ -959,7 +1051,7 @@ missing_filled <- full_corn_data %>%
   dplyr::select(-starts_with("mean_temp"), -starts_with("total_precip")) %>%
   bind_cols(imputed_weather)
 
-# Keep only non-NA rows
+# Keep only non-NA rows- there were some missing rows- but there were only 16
 full_corn_data <- full_corn_data %>%
   filter(!(year == 2024 & county %in% missing_weather_2024$county))
 
@@ -968,6 +1060,7 @@ full_corn_data <- bind_rows(full_corn_data, missing_filled)
 ```
 
 ```{r}
+#autoregression using the weather and soil data
 corn_model_ar1_full <- lm(
   yield ~ yield_lag1 +
     mean_temp_m5 + mean_temp_m6 + mean_temp_m7 + mean_temp_m8 + mean_temp_m9 + mean_temp_m10 +
