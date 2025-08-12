@@ -1057,10 +1057,6 @@ corn_feats <- corn_feats %>%
 ```
 To set up to use INLA in the models, need to let it know that the counties are neighbours and can borrow information if needed.
 
-```{r}
-
-```
-
 #### 2024 Forecast for Corn
 
 ```{r}
@@ -1725,155 +1721,83 @@ wheat_rw2_2024 <- wheat_rw2_2024 %>%
 The autoregression performed the best, so using that.
 
 Making a data set for 2025
-```{r}
-# ---- 1) Fill Aug–Oct 2025 weather with historical averages (reuse) ----
-hist_avg_late <- weather_avg_filled %>%
-  filter(month %in% 8:10) %>%
-  group_by(county, month) %>%
-  summarise(
-    mean_temp = mean(mean_temp, na.rm = TRUE),
-    total_precip = mean(total_precip, na.rm = TRUE),
-    max_humidity = mean(max_humidity, na.rm = TRUE),
-    .groups = "drop"
-  )
-
-weather_2025_filled <- weather_avg_filled %>%
-  filter(year == 2025) %>%
-  full_join(hist_avg_late, by = c("county","month")) %>%
-  mutate(
-    mean_temp    = ifelse(is.na(mean_temp.x),    mean_temp.y,    mean_temp.x),
-    total_precip = ifelse(is.na(total_precip.x), total_precip.y, total_precip.x),
-    max_humidity = ifelse(is.na(max_humidity.x), max_humidity.y, max_humidity.x)
-  ) %>%
-  dplyr::select(county, month, mean_temp, total_precip, max_humidity, year = year) %>%
-  tidyr::replace_na(list(year = 2025))
-
-# Wide features per month (match names your RW1 used)
-weather_2025_wide <- weather_2025_filled %>%
-  pivot_wider(
-    names_from = month,
-    values_from = c(mean_temp, total_precip, max_humidity),
-    names_glue = "{.value}_m{month}"
-  )
-
-```
 
 ```{r}
-## 1) Seasonal aggregates for 2025 from your wide table
-##    (match how you aggregated for 2024 — here: mean across May–Oct)
-seas_2025 <- weather_2025_wide %>%
-  transmute(
-    county,
-    temp_2025   = rowMeans(dplyr::select(., dplyr::starts_with("mean_temp_m")),    na.rm = TRUE),
-    precip_2025 = rowMeans(dplyr::select(., dplyr::starts_with("total_precip_m")), na.rm = TRUE),
-    humid_2025  = rowMeans(dplyr::select(., dplyr::starts_with("max_humidity_m")), na.rm = TRUE)
-  )
+#train/test
+#trainig on everything 2024 and before
+train_data <- corn_feats %>%
+  filter(year <= 2024) %>%
+  mutate(y = as.numeric(yield)) %>%
+  dplyr::select(county, year, y,
+         slope1_z, kfactor_z, temp_z, precip_z, humid_z,
+         texture_f, drainage_f, id)
 
-## 2) Get TRAINING scaling params for z-scores (≤ 2024)
-##    Build the same seasonal features for training years from your monthly table
-train_seasonal <- weather_avg_filled %>%
-  filter(year <= 2024, month %in% 5:10) %>%
-  group_by(county, year) %>%
-  summarise(
-    temp   = mean(mean_temp,    na.rm = TRUE),
-    precip = mean(total_precip, na.rm = TRUE),
-    humid  = mean(max_humidity, na.rm = TRUE),
-    .groups = "drop"
-  )
-
-mu_temp   <- mean(train_seasonal$temp,   na.rm = TRUE); sd_temp   <- sd(train_seasonal$temp,   na.rm = TRUE)
-mu_precip <- mean(train_seasonal$precip, na.rm = TRUE); sd_precip <- sd(train_seasonal$precip, na.rm = TRUE)
-mu_humid  <- mean(train_seasonal$humid,  na.rm = TRUE); sd_humid  <- sd(train_seasonal$humid,  na.rm = TRUE)
-
-## 3) Convert 2025 seasonal features to z-scores (names your model expects)
-seas_2025 <- seas_2025 %>%
+#test set- 2025 data- creating blank column for 2025
+test_2025 <- corn_feats %>%
+  filter(year == 2024) %>%
   mutate(
-    temp_z_2025   = (temp_2025   - mu_temp)   / sd_temp,
-    precip_z_2025 = (precip_2025 - mu_precip) / sd_precip,
-    humid_z_2025  = (humid_2025  - mu_humid)  / sd_humid
+    year = 2025,
+    y = NA_real_
   )
+n_train <- nrow(train_data)
 
-# 0) (optional but recommended) make sure county casing matches everywhere
-norm <- function(x) tolower(trimws(as.character(x)))
-weather_2025_wide   <- weather_2025_wide %>% mutate(county = norm(county))
-weather_avg_filled  <- weather_avg_filled %>% mutate(county = norm(county))
-test_2024           <- test_2024 %>% mutate(county = norm(county))
+stack_2025 <- bind_rows(train_data, test_2025) %>%
+  mutate(time_id = as.integer(factor(year, levels = sort(unique(year)))))
 
-# 1) build test_2025 from test_2024 template + 2025 z-scores you computed
-safe_scale <- function(x, mu, sd) ifelse(is.na(sd) | sd == 0, 0, (x - mu)/sd)
-
-test_2025 <- test_2024 %>%
-  # keep one row per county with the static bits + ids
-  distinct(county, id, slope1_z, kfactor_z, texture_f, drainage_f) %>%
-  # bring in the 2025 seasonal z-scores you computed just above
-  left_join(
-    seas_2025 %>% 
-      dplyr::select(county,
-             temp_z   = temp_z_2025,
-             precip_z = precip_z_2025,
-             humid_z  = humid_z_2025),
-    by = "county"
-  ) %>%
-  mutate(
-    y       = NA_real_,
-    year    = 2025L,
-    time_id = max(test_2024$time_id, na.rm = TRUE) + 1L,
-    # align factor levels to training
-    texture_f  = factor(texture_f,  levels = levels(test_2024$texture_f)),
-    drainage_f = factor(drainage_f, levels = levels(test_2024$drainage_f))
-  )
-
-# 1) Add an explicit intercept column to your 2025 design
-test_2025 <- test_2025 %>%
-  dplyr::mutate(Intercept = 1)
-
-X_2025 <- test_2025 %>%
-  dplyr::select(Intercept, slope1_z, kfactor_z, temp_z, precip_z, humid_z, texture_f, drainage_f)
-
-# 2) Rebuild the 2025 stack
-stack_2025 <- INLA::inla.stack(
-  data    = list(y = test_2025$y),
-  A       = list(1, 1, 1),  # fixed effects, time_id, id
-  effects = list(
-    X_2025,
-    list(time_id = test_2025$time_id),
-    list(id      = test_2025$id)
-  ),
-  tag = "pred_2025"
-)
-
-# 3) Use a no-intercept formula (explicit Intercept term)
-f_rw1_noint <- y ~ -1 + Intercept +
+#running rw1 from before
+f_rw1 <- y ~ 1 +
   slope1_z + kfactor_z + temp_z + precip_z + humid_z +
   texture_f + drainage_f +
   f(time_id, model = "rw1") +
-  f(id,      model = "iid")
+  f(id, model = "iid")
 
-# 4) Predict using your 2024 fit as mode (no refit of hypers)
-fit_2025 <- INLA::inla(
-  f_rw1_noint,
+fit_rw1_2025 <- INLA::inla(
+  f_rw1,
   family = "gaussian",
-  data   = INLA::inla.stack.data(stack_2025),
-  control.predictor = list(A = INLA::inla.stack.A(stack_2025), compute = TRUE),
-  control.mode      = list(result = fit_rw1, restart = FALSE),
-  control.compute   = list(dic = FALSE, waic = FALSE, cpo = FALSE)
+  data = stack_2025,
+  control.predictor = list(compute = TRUE),
+  control.compute   = list(dic = TRUE, waic = TRUE, cpo = TRUE)
 )
 
-idx_2025 <- INLA::inla.stack.index(stack_2025, tag = "pred_2025")$data
-pred_2025_mean <- fit_2025$summary.fitted.values$mean[idx_2025]
-pred_2025_sd   <- fit_2025$summary.fitted.values$sd[idx_2025]
+# Get predictions for the test rows
+n_train <- nrow(train_data)
+pred_2025_rw1 <- fit_rw1_2025$summary.fitted.values$mean[(n_train + 1):nrow(stack_2025)]
 
-results_2025_rw1 <- test_2025 %>%
-  dplyr::transmute(county, year = 2025L,
-                   pred_yield_rw1 = pred_2025_mean,
-                   pred_sd        = pred_2025_sd)
+results_rw1_2025 <- test_2025 %>%
+  mutate(pred_yield_rw1 = pred_2025_rw1) %>%
+  dplyr::select(county, year, pred_yield_rw1)
 
-# these should all be TRUE/non-empty as noted
-all(c("y","slope1_z","kfactor_z","temp_z","precip_z","humid_z",
-      "texture_f","drainage_f","time_id","id") %in% names(test_2025))
-nlevels(test_2024$texture_f); nlevels(test_2024$drainage_f)  # not zero
-unique(test_2025$time_id) == max(test_2024$time_id) + 1L
-length(unique(test_2025$id)) == length(unique(test_2024$id)) # same id mapping
+results_rw1_2025
+```
+```{r}
+yield_2024 <- corn_feats %>%
+  filter(year == 2024) %>%
+  dplyr::select(county, actual_yield = yield)
+
+comparison_rw1 <- results_rw1_2025 %>%
+  left_join(yield_2024, by = "county") %>%
+  mutate(
+    change = pred_yield_rw1 - actual_yield,
+    direction = ifelse(change > 0, "Increase", "Decrease")
+  )
+
+map_data_rw1 <- corn_regions %>%
+  mutate(county = tolower(county)) %>%
+  left_join(
+    comparison_rw1 %>% mutate(county = tolower(county)),
+    by = "county"
+  )
+
+#plotting a map that shows wheather yield increases or decreasing per county
+ggplot(map_data_rw1) +
+  geom_sf(aes(fill = direction), color = "gray30") +
+  scale_fill_manual(values = c("Increase" = "forestgreen", "Decrease" = "firebrick")) +
+  labs(
+    title = "Corn Yield Change in 2025 vs 2024",
+    fill = "Direction of Change"
+  ) +
+  theme_minimal()
+
 ```
 
 ##### For Soybean
