@@ -32,6 +32,13 @@ library(leaflet)
 library(patchwork)  # for arranging plots like tmap_arrange
 library(tidyr)
 library(gstat)
+library(patchwork)  # for arranging plots like tmap_arrange
+library(tidyr)
+library(gstat)
+library(INLA)
+library(Matrix)
+library(spdep)
+library(forcats)
 
 
 ```
@@ -1018,7 +1025,7 @@ colSums(is.na(weather_wide))
 corn_yield <- corn_data_sf %>%
   sf::st_drop_geometry() %>%
   dplyr::mutate(yield = as.numeric(yield_bushels_ac)) %>%
-  dplyr::select(county, year, yield, slope1_avg, kfactor_avg)
+  dplyr::select(county, year, yield, slope1_avg, kfactor_avg, texture_mode, drainage_mode)
 
 # Join in weather (assuming corn_yield already has soil info)
 full_corn_data <- corn_yield %>%
@@ -1387,6 +1394,37 @@ pred_2025_map <- ggplot(data = corn_2025_sf) +
 pred_2025_map
 ```
 
+
+```{r}
+library(dplyr)
+
+corn_feats <- full_corn_data %>%
+  # Calculate growing season averages/sums (May–Sept for soybeans)
+  dplyr::mutate(
+    temp_gs   = rowMeans(dplyr::select(., mean_temp_m5:mean_temp_m10), na.rm = TRUE),
+    precip_gs = rowSums(dplyr::select(., total_precip_m5:total_precip_m10), na.rm = TRUE),
+    humid_gs  = rowMeans(dplyr::select(., max_humidity_m5:max_humidity_m10), na.rm = TRUE)
+  ) %>%
+  # Standardize numeric predictors
+  dplyr::mutate(
+    slope1_z  = as.numeric(scale(slope1_avg)),
+    kfactor_z = as.numeric(scale(kfactor_avg)),
+    temp_z    = as.numeric(scale(temp_gs)),
+    precip_z  = as.numeric(scale(precip_gs)),
+    humid_z   = as.numeric(scale(humid_gs)),
+    # Convert categorical soil vars to factors
+    texture_f  = factor(texture_mode),
+    drainage_f = factor(drainage_mode),
+    # Make an integer ID for spatial random effect
+    id = as.integer(factor(county))
+  ) %>%
+  dplyr::select(county, year, yield,
+         slope1_z, kfactor_z, temp_z, precip_z, humid_z,
+         texture_f, drainage_f, id)
+
+
+```
+
 ```{r}
 
 #train/test
@@ -1459,18 +1497,25 @@ map_data_rw1 <- corn_regions %>%
   )
 
 #plotting a map that shows wheather yield increases or decreasing per county
-ggplot(map_data_rw1) +
+corn_change <- ggplot(map_data_rw1) +
   geom_sf(aes(fill = direction), color = "gray30") +
-  scale_fill_manual(values = c("Increase" = "forestgreen", "Decrease" = "firebrick")) +
+  scale_fill_manual(values = c("Increase" = "forestgreen", "Decrease" = "tan")) +
   labs(
     title = "Corn Yield Change in 2025 vs 2024",
     fill = "Direction of Change"
   ) +
   theme_minimal()
 
+corn_change
 #but everything else for the corn forecasting can go
 
 ```
+
+
+
+
+
+
 
 
 
@@ -1569,8 +1614,8 @@ colSums(is.na(weather_wide))
 soybeans_yield <- soybeans_data_sf %>%
   sf::st_drop_geometry() %>%
   dplyr::mutate(yield = as.numeric(yield_bushels_acre)) %>%
+    dplyr::select(county, year, yield, slope1_avg, kfactor_avg,texture_mode, drainage_mode)
 
-    dplyr::select(county, year, yield, slope1_avg, kfactor_avg)
 soybeans_yield$year <- as.integer(soybeans_yield$year)
 weather_wide$year <- as.integer(weather_wide$year)
 
@@ -1855,6 +1900,46 @@ ggsave("soybeans_predictions.png", plot = soybeans, width = 8, height = 6, dpi =
 #### 2025 Forecast
 
 The autoregression performed the best, so using that.
+
+```{r}
+
+
+```
+
+
+
+```{r}
+library(dplyr)
+
+soybeans_feats <- full_soybeans_data %>%
+  # Calculate growing season averages/sums (May–Sept for soybeans)
+  dplyr::mutate(
+    temp_gs   = rowMeans(dplyr::select(., mean_temp_m5:mean_temp_m9), na.rm = TRUE),
+    precip_gs = rowSums(dplyr::select(., total_precip_m5:total_precip_m9), na.rm = TRUE),
+    humid_gs  = rowMeans(dplyr::select(., max_humidity_m5:max_humidity_m9), na.rm = TRUE)
+  ) %>%
+  # Standardize numeric predictors
+  dplyr::mutate(
+    slope1_z  = as.numeric(scale(slope1_avg)),
+    kfactor_z = as.numeric(scale(kfactor_avg)),
+    temp_z    = as.numeric(scale(temp_gs)),
+    precip_z  = as.numeric(scale(precip_gs)),
+    humid_z   = as.numeric(scale(humid_gs)),
+    # Convert categorical soil vars to factors
+    texture_f  = factor(texture_mode),
+    drainage_f = factor(drainage_mode),
+    # Make an integer ID for spatial random effect
+    id = as.integer(factor(county))
+  ) %>%
+  dplyr::select(county, year, yield,
+         slope1_z, kfactor_z, temp_z, precip_z, humid_z,
+         texture_f, drainage_f, id)
+
+
+```
+
+
+
 ```{r}
 #Making a data set for 2025
 #train/test
@@ -1925,15 +2010,16 @@ map_data_rw1 <- soybeans_regions %>%
   )
 
 #plotting a map that shows wheather yield increases or decreasing per county
-ggplot(map_data_rw1) +
+soybeans_change <- ggplot(map_data_rw1) +
   geom_sf(aes(fill = direction), color = "gray30") +
-  scale_fill_manual(values = c("Increase" = "forestgreen", "Decrease" = "firebrick")) +
+  scale_fill_manual(values = c("Increase" = "forestgreen", "Decrease" = "tan")) +
   labs(
-    title = "Corn Yield Change in 2025 vs 2024",
+    title = "soybeans Yield Change in 2025 vs 2024",
     fill = "Direction of Change"
   ) +
   theme_minimal()
 
+soybeans_change
 #but everything else for the corn forecasting can go
 
 ```
@@ -2048,7 +2134,7 @@ colSums(is.na(weather_wide))
 wheat_yield <- wheat_data_sf %>%
   sf::st_drop_geometry() %>%
   dplyr::mutate(yield = as.numeric(yield_bushels_acre)) %>%
-    dplyr::select(county, wheat_year, yield, slope1_avg, kfactor_avg)
+    dplyr::select(county, wheat_year, yield, slope1_avg, kfactor_avg, texture_mode, drainage_mode)
 
 # soybeans_yield$year <- as.integer(soybeans_yield$year)
 # weather_wide$year <- as.integer(weather_wide$year)
@@ -2434,12 +2520,71 @@ Making a data set for 2025
 
 
 
+
+```{r}
+
+
+# Shift Oct-Dec into next year's record
+wheat_feats <- full_wheat_data %>%
+  # For convenience, create a wheat_year variable
+  #mutate(wheat_year = ifelse(month >= 10, year + 1, year)) %>%
+  group_by(county, wheat_year) %>%
+  summarise(
+    # Average temps over Oct–Jul
+    temp_gs = mean(c(
+      mean_temp_m10, mean_temp_m11, mean_temp_m12,  # Oct–Dec prev year
+      mean_temp_m1, mean_temp_m2, mean_temp_m3, 
+      mean_temp_m4, mean_temp_m5, mean_temp_m6, mean_temp_m7
+    ), na.rm = TRUE),
+    
+    # Total precip over Oct–Jul
+    precip_gs = sum(c(
+      total_precip_m10, total_precip_m11, total_precip_m12,
+      total_precip_m1, total_precip_m2, total_precip_m3,
+      total_precip_m4, total_precip_m5, total_precip_m6, total_precip_m7
+    ), na.rm = TRUE),
+    
+    # Mean humidity over Oct–Jul (if available)
+    humid_gs = mean(c(
+      max_humidity_m10, max_humidity_m11, max_humidity_m12,
+      max_humidity_m1, max_humidity_m2, max_humidity_m3,
+      max_humidity_m4, max_humidity_m5, max_humidity_m6, max_humidity_m7
+    ), na.rm = TRUE),
+    
+    # Soil variables (assumed constant over year)
+    slope1_avg = first(slope1_avg),
+    kfactor_avg = first(kfactor_avg),
+    texture = first(texture_mode),
+    drainage = first(drainage_mode),
+    
+    yield = first(yield),  # yield for that wheat_year
+    .groups = "drop"
+  ) %>%
+  # Standardize predictors
+  dplyr::mutate(
+    slope1_z  = as.numeric(scale(slope1_avg)),
+    kfactor_z = as.numeric(scale(kfactor_avg)),
+    temp_z    = as.numeric(scale(temp_gs)),
+    precip_z  = as.numeric(scale(precip_gs)),
+    humid_z   = as.numeric(scale(humid_gs)),
+    texture_f  = factor(texture),
+    drainage_f = factor(drainage),
+    id = as.integer(factor(county))
+  ) %>%
+  #rename(year = wheat_year) %>%
+  dplyr::select(county, wheat_year, yield,
+         slope1_z, kfactor_z, temp_z, precip_z, humid_z,
+         texture_f, drainage_f, id)
+```
+
+
+
 ```{r}
 #Making a data set for 2025
 #train/test
 #training on everything 2024 and before
 train_data <- wheat_feats %>%
-  filter(year <= 2024) %>%
+  filter(wheat_year <= 2024) %>%
   mutate(y = as.numeric(yield)) %>%
   dplyr::select(county, wheat_year, y,
          slope1_z, kfactor_z, temp_z, precip_z, humid_z,
@@ -2455,7 +2600,7 @@ test_2025 <- wheat_feats %>%
 n_train <- nrow(train_data)
 
 stack_2025 <- bind_rows(train_data, test_2025) %>%
-  mutate(time_id = as.integer(factor(wheat_year, levels = sort(unique(year)))))
+  mutate(time_id = as.integer(factor(wheat_year, levels = sort(unique(wheat_year)))))
 
 #running rw1 from before
 f_rw1 <- y ~ 1 +
@@ -2504,19 +2649,25 @@ map_data_rw1 <- wheat_regions %>%
   )
 
 #plotting a map that shows wheather yield increases or decreasing per county
-ggplot(map_data_rw1) +
+wheat_change <- ggplot(map_data_rw1) +
   geom_sf(aes(fill = direction), color = "gray30") +
-  scale_fill_manual(values = c("Increase" = "forestgreen", "Decrease" = "firebrick")) +
+  scale_fill_manual(values = c("Increase" = "forestgreen", "Decrease" = "tan")) +
   labs(
     title = "Winter Wheat Yield Change in 2025 vs 2024",
     fill = "Direction of Change"
   ) +
   theme_minimal()
 
+wheat_change
 #but everything else for the corn forecasting can go
 
 ```
 
+```{r, fig.height=16}
+
+corn_change | soybeans_change | wheat_change
+
+```
 
 
 
